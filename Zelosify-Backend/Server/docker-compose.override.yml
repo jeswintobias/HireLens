@@ -1,0 +1,6 @@
+# Local override (auto-merged by `docker compose`).
+# postgres:latest is now v18+, which refuses the /var/lib/postgresql/data mount
+# used in docker-compose.yml. Pin to v17 so the original compose file works unchanged.
+services:
+  postgres:
+    image: postgres:17
