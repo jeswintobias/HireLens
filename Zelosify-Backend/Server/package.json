@@ -15,7 +15,11 @@
     "prisma:reset": "prisma migrate reset",
     "seed:openings": "tsx src/scripts/seedOpenings.ts",
     "test": "vitest --config vitest.config.ts",
-    "test:ui": "vitest --config vitest.config.ts --ui"
+    "test:ui": "vitest --config vitest.config.ts --ui",
+    "test:run": "vitest run --config vitest.config.ts",
+    "test:unit": "vitest run --config vitest.config.ts tests/unit",
+    "test:integration": "vitest run --config vitest.config.ts tests/integration",
+    "test:perf": "vitest run --config vitest.config.ts tests/performance"
   },
   "keywords": [],
   "author": "",

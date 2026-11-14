@@ -18,6 +18,8 @@ function serializeError(err: unknown): LogContext {
 }
 
 function write(level: LogLevel, event: string, context: LogContext = {}) {
+  // Test runs set LOG_SILENT=true to keep the reporter output readable.
+  if (process.env.LOG_SILENT === "true") return;
   const { error, ...rest } = context;
   const entry = {
     timestamp: new Date().toISOString(),
