@@ -20,6 +20,9 @@ import awsRouter from "./routers/aws/awsRoute.js";
 import vendorRoutes from "./routers/vendor/vendorRoutes.js";
 import hiringManagerRoutes from "./routers/hiring/hiringManagerRoutes.js";
 
+// AI recommendation agent (async, triggered on profile submission)
+import { initRecommendationAgent } from "./services/recommendation/index.js";
+
 // Load environment variables from .env file
 dotenv.config();
 
@@ -37,6 +40,9 @@ async function startServer() {
 
     // Establish database connections
     await connectPrisma();
+
+    // Register the recommendation agent's submission handler + recovery
+    initRecommendationAgent();
 
     // Security middleware for headers and protection
     app.use(helmet());
