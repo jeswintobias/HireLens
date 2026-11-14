@@ -1,6 +1,18 @@
 import { NextResponse } from "next/server";
 import { extractRoleFromToken } from "@/utils/Auth/middlewareUtils";
 
+// Areas that only one role may open, and each role's landing page.
+const ROLE_GUARDED_AREAS = [
+  { prefix: "/vendor", role: "IT_VENDOR" },
+  { prefix: "/hiring-manager", role: "HIRING_MANAGER" },
+];
+const ROLE_HOME = {
+  IT_VENDOR: "/vendor/openings",
+  HIRING_MANAGER: "/hiring-manager/openings",
+  BUSINESS_USER: "/business-user/digital-initiative",
+  VENDOR_MANAGER: "/user",
+};
+
 export function middleware(request) {
   // Get the pathname of the request
   const path = request.nextUrl.pathname;
@@ -74,8 +86,14 @@ export function middleware(request) {
         );
 
       case "IT_VENDOR":
-        console.log(`Redirecting IT_VENDOR to /vendor/payments`);
-        return NextResponse.redirect(new URL("/vendor/payments", request.url));
+        console.log(`Redirecting IT_VENDOR to /vendor/openings`);
+        return NextResponse.redirect(new URL("/vendor/openings", request.url));
+
+      case "HIRING_MANAGER":
+        console.log(`Redirecting HIRING_MANAGER to /hiring-manager/openings`);
+        return NextResponse.redirect(
+          new URL("/hiring-manager/openings", request.url)
+        );
 
       default:
         // Fallback for unknown roles or missing role - redirect to base user page
@@ -89,6 +107,16 @@ export function middleware(request) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
+  // UI-level route guard: role-specific areas are only reachable by that
+  // role (the backend enforces the same rule on every API call).
+  const guardedArea = ROLE_GUARDED_AREAS.find(
+    ({ prefix }) => path === prefix || path.startsWith(`${prefix}/`)
+  );
+  if (guardedArea && userRole !== guardedArea.role) {
+    const home = ROLE_HOME[userRole] || "/";
+    return NextResponse.redirect(new URL(home, request.url));
+  }
+
   return response;
 }
 
@@ -99,6 +127,7 @@ export const config = {
     "/user/:path*",
     "/vendor/:path*",
     "/business-user/:path*",
+    "/hiring-manager/:path*",
 
     // Public paths for redirect logic
     "/login",
