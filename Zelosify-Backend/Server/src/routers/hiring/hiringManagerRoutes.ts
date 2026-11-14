@@ -2,8 +2,19 @@ import { Router, type RequestHandler } from "express";
 import { authenticateUser } from "../../middlewares/auth/authenticateMiddleware.js";
 import { authorizeRole } from "../../middlewares/auth/authorizeMiddleware.js";
 import { fetchData } from "../../controllers/controllers.js";
+import { managerOpeningRoutes, managerProfileRoutes } from "./hiringManagerContractRoutes.js";
 
 const router = Router();
+
+/**
+ * @route /hiring-manager/openings  (own contract openings + submitted profiles)
+ */
+router.use("/openings", managerOpeningRoutes);
+
+/**
+ * @route /hiring-manager/profiles  (shortlist / reject / preview / AI re-run)
+ */
+router.use("/profiles", managerProfileRoutes);
 
 /**
  * =============================================================================
