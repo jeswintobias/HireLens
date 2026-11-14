@@ -9,7 +9,7 @@ import logger from "../../utils/logger/logger.js";
 import { createStorageService } from "../storage/storageFactory.js";
 import { createAgentState, type AgentState, type LoadedResume } from "./agent/agentState.js";
 import { AgentError, runAgent, type AgentUsage } from "./agent/orchestrator.js";
-import { extractResumeText, streamToBuffer } from "./extraction/extractResumeText.js";
+import { extractResumeContent, streamToBuffer } from "./extraction/extractResumeText.js";
 import { createLlmClient } from "./llm/createLlmClient.js";
 import type { LlmClient } from "./llm/llmClient.js";
 import { computeConfidence, decide, type Decision } from "./policy/decisionPolicy.js";
@@ -59,8 +59,10 @@ function prefetchResume(s3Key: string, fileType: "pdf" | "pptx"): () => Promise<
     const t0 = performance.now();
     const stream = await createStorageService().getObjectStream(s3Key);
     const buffer = await streamToBuffer(stream, MAX_RESUME_SIZE_BYTES);
-    const raw = await extractResumeText(buffer, fileType);
-    const sanitized = sanitizeResumeText(raw);
+    // Visible text only; hidden text (white-on-white, tiny, off-page,
+    // covered) is reported as a signal and never shown to the AI.
+    const { text: raw, hidden } = await extractResumeContent(buffer, fileType);
+    const sanitized = sanitizeResumeText(raw, hidden);
     if (sanitized.text.length < 20) throw new Error("Resume contains no extractable text");
     return { ...sanitized, parsingMs: Math.round(performance.now() - t0) };
   })();

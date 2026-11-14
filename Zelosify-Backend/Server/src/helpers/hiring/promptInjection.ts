@@ -7,6 +7,11 @@
  *           normalized copy (lowercase, leetspeak folded) and on a
  *           letters-only copy (catches "i g n o r e" style spacing).
  *
+ * Layer 3 – hidden text: text that is in the file but invisible to a human
+ *           (white-on-white, tiny font, off-page, covered) is removed by the
+ *           extractor before this point and reported here as "hidden_text",
+ *           together with any injection patterns found inside it.
+ *
  * Detection never blocks a profile. It flags it so the agent lowers
  * confidence and surfaces a warning. The real defence is architectural: the
  * LLM cannot set the score or decision (see scoring engine + decision policy).
@@ -18,7 +23,8 @@ export type InjectionCategory =
   | "score_manipulation"
   | "prompt_exfiltration"
   | "tool_abuse"
-  | "delimiter_escape";
+  | "delimiter_escape"
+  | "hidden_text";
 
 export interface InjectionSignal {
   category: InjectionCategory;
@@ -102,7 +108,15 @@ function excerptAround(text: string, index: number, length: number) {
   return text.slice(start, Math.min(text.length, index + length + 10)).trim().slice(0, 120);
 }
 
-export function sanitizeResumeText(raw: string): SanitizedResume {
+/** Text the extractor found in the file but a human would not see. */
+export interface HiddenTextRun {
+  reason: string;
+  text: string;
+}
+
+const MAX_HIDDEN_SIGNALS = 5;
+
+export function sanitizeResumeText(raw: string, hidden: HiddenTextRun[] = []): SanitizedResume {
   let text = raw.normalize("NFKC").replace(INVISIBLE_CHARS, "").replace(CONTROL_CHARS, " ");
 
   const signals: InjectionSignal[] = [];
@@ -124,16 +138,33 @@ export function sanitizeResumeText(raw: string): SanitizedResume {
   if (truncated) text = text.slice(0, MAX_RESUME_CHARS);
 
   signals.push(...detectInjection(text));
+
+  if (hidden.length > 0) {
+    for (const run of hidden.slice(0, MAX_HIDDEN_SIGNALS)) {
+      signals.push({ category: "hidden_text", excerpt: `${run.reason}: ${run.text}`.slice(0, 120) });
+    }
+    if (hidden.length > MAX_HIDDEN_SIGNALS) {
+      signals.push({ category: "hidden_text", excerpt: `…and ${hidden.length - MAX_HIDDEN_SIGNALS} more hidden text runs` });
+    }
+    // Name what the hidden text was trying to do (it never reaches the AI).
+    const hiddenText = hidden.map((h) => h.text).join("\n").normalize("NFKC").replace(INVISIBLE_CHARS, "");
+    for (const s of detectInjection(hiddenText)) {
+      signals.push({ category: s.category, excerpt: `(hidden) ${s.excerpt}`.slice(0, 120) });
+    }
+  }
   return { text, truncated, suspected: signals.length > 0, signals };
 }
 
 export function detectInjection(text: string): InjectionSignal[] {
   const folded = foldForDetection(text);
+  // Leet folding turns digits into letters ("1.0" → "i.o"), so patterns that
+  // look for numbers (score manipulation) are also run on a plain copy.
+  const plain = text.toLowerCase().replace(/[ \t]+/g, " ");
   const signals: InjectionSignal[] = [];
   const seen = new Set<string>();
 
   for (const { category, re } of PATTERNS) {
-    const m = re.exec(folded);
+    const m = re.exec(folded) ?? re.exec(plain);
     if (m && !seen.has(category + m[0])) {
       seen.add(category + m[0]);
       signals.push({ category, excerpt: excerptAround(text, m.index, m[0].length) });
