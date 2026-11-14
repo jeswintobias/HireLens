@@ -10,6 +10,10 @@ import axios from "axios";
 import { AuthProvider, Role } from "@prisma/client";
 import { getClientSecret } from "../../../../config/keycloak/keycloak.js";
 import { isValidRole } from "../../../../utils/RBAC/isValidRole.js";
+import {
+  REGISTRATION_KEY_HEADER,
+  checkRegistrationRole,
+} from "../../../../helpers/auth/registrationPolicy.js";
 
 const KEYCLOAK_URL = process.env.KEYCLOAK_URL || "http://localhost:8080/auth";
 const REALM_NAME = process.env.KEYCLOAK_REALM || "Zelosify";
@@ -71,6 +75,16 @@ export const register = asyncHandler(
       // Validate the provided role
       if (!isValidRole(role)) {
         res.status(400).json({ message: "Invalid role provided." });
+        return;
+      }
+
+      // Privileged roles cannot be self-assigned (see registrationPolicy.ts).
+      const decision = checkRegistrationRole(
+        role,
+        req.get(REGISTRATION_KEY_HEADER) ?? undefined
+      );
+      if (!decision.allowed) {
+        res.status(decision.status).json({ message: decision.message });
         return;
       }
 

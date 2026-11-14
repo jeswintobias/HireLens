@@ -15,6 +15,13 @@ import {
   verifyTOTP,
 } from "../../../controllers/controllers.js";
 import { AuthenticatedRequest } from "../../../types/common.js";
+import {
+  loginAccountLimiter,
+  loginIpLimiter,
+  registerKeyLimiter,
+  totpAccountLimiter,
+  totpIpLimiter,
+} from "../../../middlewares/security/authLimiters.js";
 
 /**
  * Wraps async handlers to ensure void return type
@@ -50,19 +57,19 @@ const router = Router();
  * POST /register - Register new user account
  * Creates a new user account with provided credentials
  */
-router.post("/register", wrapHandler(register));
+router.post("/register", registerKeyLimiter, wrapHandler(register));
 
 /**
  * POST /verify-login - Verify user login credentials
  * Validates user credentials and initiates login process
  */
-router.post("/verify-login", wrapHandler(verifyLogin));
+router.post("/verify-login", loginIpLimiter, loginAccountLimiter, wrapHandler(verifyLogin));
 
 /**
  * POST /verify-totp - Verify TOTP for two-factor authentication
  * Validates TOTP code for users with 2FA enabled
  */
-router.post("/verify-totp", wrapHandler(verifyTOTP));
+router.post("/verify-totp", totpIpLimiter, totpAccountLimiter, wrapHandler(verifyTOTP));
 
 /**
  * POST /logout - Logout authenticated user
