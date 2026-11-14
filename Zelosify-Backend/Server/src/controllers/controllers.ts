@@ -27,5 +27,17 @@ export {
   //   // deleteAttachment,
 } from "./vendor/resourceRequest/vendorRequestController.js";
 
+// IT Vendor contract openings + candidate profiles
+export {
+  getVendorOpenings,
+  getVendorOpeningById,
+} from "./vendor/openings/vendorOpeningController.js";
+export {
+  presignVendorProfiles,
+  uploadVendorProfiles,
+  deleteVendorProfile,
+  previewVendorProfile,
+} from "./vendor/profiles/vendorProfileController.js";
+
 // ===== HIRING MANAGEMENT =====
 export { fetchData } from "./hiring/hiringProfileController.js";
