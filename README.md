@@ -81,27 +81,54 @@ for production behaviour.
 ## 2. Architecture
 
 ```mermaid
-flowchart LR
-  subgraph FE[Next.js frontend]
-    V[Vendor screens] --- R[(Redux slices + hooks)]
-    H[Hiring manager screens] --- R
+flowchart TB
+  subgraph FE["Next.js frontend"]
+    V["Vendor screens"] --- R[("Redux slices + hooks")]
+    H["Hiring manager screens"] --- R
   end
-  R -->|axios, cookies| API
 
-  subgraph BE[Express backend]
-    API[Routes] --> MW[authenticateUser + authorizeRole]
-    MW --> C[Controllers: parse + respond]
-    C --> S[Services: business rules, tenant scoping]
-    S --> DB[(PostgreSQL via Prisma)]
-    S --> S3[(AWS S3)]
-    S -- profiles submitted --> Q[Recommendation queue]
-    Q --> AG[Agent orchestrator]
-    AG <-->|tool calls| LLM[(Gemini / Groq)]
-    AG --> T[Tools: parse · normalize · extract · match · score · submit]
-    T --> EN[Deterministic engines]
+  subgraph BE["Express backend"]
+    API["Routes"] --> MW["authenticateUser + authorizeRole"]
+    MW --> C["Controllers: validate + respond"]
+    C --> S["Services: business rules, tenant scoping"]
+    S --> DB[("PostgreSQL via Prisma")]
+    S --> S3[("AWS S3")]
+    S -->|"profiles submitted"| Q["Recommendation queue"]
+    Q --> AG["Agent orchestrator"]
+    AG -->|"prompt + tool results"| LLM[("Gemini or Groq")]
+    LLM -->|"tool calls"| AG
+    AG --> T["Tools: parse, normalize, extract, match, score, submit"]
+    T --> EN["Deterministic engines"]
     AG --> DB
   end
+
+  R -->|"axios, cookies"| API
 ```
+
+<details>
+<summary>Text version (if the diagram does not render)</summary>
+
+```
+ Next.js frontend:  Vendor screens / Hiring manager screens  →  Redux slices + hooks
+                                      │  axios (cookies)
+                                      ▼
+ Express backend:   Routes → authenticateUser + authorizeRole → Controllers → Services
+                                                                               │
+                         ┌─────────────────────┬────────────────────────────┤
+                         ▼                     ▼                            ▼
+                 PostgreSQL (Prisma)        AWS S3          Recommendation queue
+                         ▲                                                  │
+                         │                                                  ▼
+                         └──────────────────────────────────  Agent orchestrator ⇄ Gemini / Groq
+                                                                            │  (tool calls)
+                                                                            ▼
+                                       Tools: parse · normalize · extract · match · score · submit
+                                                                            │
+                                                                            ▼
+                                                                Deterministic engines
+```
+
+</details>
 
 **Layering** (task requirement "controllers must not contain business logic"):
 `routes → controllers (validation + HTTP mapping) → services (rules, Prisma, S3) → engines`.
