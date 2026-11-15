@@ -19,6 +19,7 @@ import authRoutes from "./routers/auth/authRoute.js";
 import awsRouter from "./routers/aws/awsRoute.js";
 import vendorRoutes from "./routers/vendor/vendorRoutes.js";
 import hiringManagerRoutes from "./routers/hiring/hiringManagerRoutes.js";
+import notificationRoutes from "./routers/notifications/notificationRoutes.js";
 
 // AI recommendation agent (async, triggered on profile submission)
 import { initRecommendationAgent } from "./services/recommendation/index.js";
@@ -87,6 +88,9 @@ async function startServer() {
 
     // Hiring manager routes
     app.use("/api/v1/hiring-manager", hiringManagerRoutes);
+
+    // In-app notifications (any signed-in user, own notifications only)
+    app.use("/api/v1/notifications", notificationRoutes);
 
     // Request debugging middleware - logs all incoming requests
     app.use((req, _, next) => {

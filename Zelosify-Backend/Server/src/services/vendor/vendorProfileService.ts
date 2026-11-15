@@ -20,6 +20,9 @@ import { FileUploadService } from "../upload/fileUploadService.js";
 import { createStorageService } from "../storage/storageFactory.js";
 import { emitProfilesSubmitted } from "../hiring/profileEvents.js";
 import { assertOpeningAcceptsUploads } from "./vendorOpeningService.js";
+import type { Notification } from "@prisma/client";
+import { notifyProfilesSubmitted } from "../notifications/notificationService.js";
+import { publishNotification } from "../notifications/notificationEvents.js";
 
 /**
  * IT Vendor profile workflow: presign → upload/submit → soft delete → preview.
@@ -194,17 +197,18 @@ export async function uploadAndSubmitProfiles(
 
   // 3. Persist all profiles atomically.
   let created: { id: number; s3Key: string; status: string; submittedAt: Date }[];
+  let managerNotification: Notification | undefined;
   try {
     created = await prisma.$transaction(async (tx) => {
       // Re-check inside the transaction: the opening may have closed meanwhile.
       const opening = await tx.opening.findFirst({
         where: { id: openingId, tenantId: actor.tenantId, status: "OPEN" },
-        select: { id: true },
+        select: { id: true, title: true, hiringManagerId: true },
       });
       if (!opening) {
         throw HttpError.conflict("Opening is not accepting profiles");
       }
-      return tx.hiringProfile.createManyAndReturn({
+      const rows = await tx.hiringProfile.createManyAndReturn({
         data: keys.map((s3Key) => ({
           openingId,
           s3Key,
@@ -213,6 +217,15 @@ export async function uploadAndSubmitProfiles(
         })),
         select: { id: true, s3Key: true, status: true, submittedAt: true },
       });
+      // Tell the opening's hiring manager (same transaction: all or nothing).
+      managerNotification = await notifyProfilesSubmitted(tx, {
+        tenantId: actor.tenantId,
+        hiringManagerId: opening.hiringManagerId,
+        openingId,
+        openingTitle: opening.title,
+        count: rows.length,
+      });
+      return rows;
     });
   } catch (error) {
     logger.error("vendor.profiles.db_write_failed", {
@@ -223,6 +236,9 @@ export async function uploadAndSubmitProfiles(
     });
     throw error;
   }
+
+  // Committed: push the notification live to the hiring manager's open tabs.
+  if (managerNotification) publishNotification(managerNotification);
 
   logger.info("vendor.profiles.submitted", {
     tenantId: actor.tenantId,

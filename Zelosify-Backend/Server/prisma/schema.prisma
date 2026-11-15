@@ -33,6 +33,9 @@ model User {
   // Relation to tenant
   tenant          Tenants?     @relation(fields: [tenantId], references: [tenantId])
 
+  // In-app notifications addressed to this user
+  notifications   Notification[]
+
   @@unique([email, provider])
   @@index([tenantId])
 }
@@ -182,4 +185,33 @@ enum RecommendationRunStatus {
   RUNNING
   SUCCEEDED
   FAILED
+}
+
+// =============================================================================
+// In-app notifications (contract hiring module)
+// =============================================================================
+
+enum NotificationType {
+  PROFILES_SUBMITTED   // to the hiring manager: vendor submitted profiles
+  PROFILE_SHORTLISTED  // to the vendor: their candidate was shortlisted
+  PROFILE_REJECTED     // to the vendor: their candidate was rejected
+}
+
+model Notification {
+  id          String           @id @default(uuid())
+  tenantId    String
+  userId      String           // recipient
+  type        NotificationType
+  title       String
+  message     String
+  link        String?          // in-app path, e.g. /vendor/openings/<id>
+  openingId   String?
+  profileId   Int?
+  readAt      DateTime?
+  createdAt   DateTime         @default(now())
+
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
 }

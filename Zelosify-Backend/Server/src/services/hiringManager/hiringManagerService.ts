@@ -1,5 +1,7 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, type Notification } from "@prisma/client";
 import prisma from "../../config/prisma/prisma.js";
+import { notifyDecision } from "../notifications/notificationService.js";
+import { publishNotification } from "../notifications/notificationEvents.js";
 import type { Pagination } from "../../helpers/hiring/requestValidation.js";
 import {
   filenameFromS3Key,
@@ -269,7 +271,10 @@ export async function listOpeningProfiles(
 async function getManagedProfileOrThrow(actor: Actor, profileId: number) {
   const profile = await prisma.hiringProfile.findFirst({
     where: managedProfileWhere(actor, profileId),
-    select: { id: true, s3Key: true, status: true, openingId: true },
+    select: {
+      id: true, s3Key: true, status: true, openingId: true, uploadedBy: true,
+      opening: { select: { title: true } },
+    },
   });
   if (!profile) throw HttpError.notFound("Profile not found");
   return profile;
@@ -316,10 +321,29 @@ async function reviewProfile(actor: Actor, profileId: number, action: ReviewActi
       ? { status: "SHORTLISTED", shortlistedBy: actor.userId, shortlistedAt: now }
       : { status: "REJECTED", rejectedBy: actor.userId, rejectedAt: now };
 
-  const { count } = await prisma.hiringProfile.updateMany({
-    where: { ...managedProfileWhere(actor, profileId), status: "SUBMITTED" },
-    data,
+  // Guarded update + vendor notification in one transaction: only the request
+  // that wins the SUBMITTED → decided transition notifies the vendor.
+  let vendorNotification: Notification | undefined;
+  const count = await prisma.$transaction(async (tx) => {
+    const { count } = await tx.hiringProfile.updateMany({
+      where: { ...managedProfileWhere(actor, profileId), status: "SUBMITTED" },
+      data,
+    });
+    if (count > 0) {
+      vendorNotification = await notifyDecision(tx, {
+        tenantId: actor.tenantId,
+        vendorUserId: profile.uploadedBy,
+        openingId: profile.openingId,
+        openingTitle: profile.opening.title,
+        profileId,
+        fileName: filenameFromS3Key(profile.s3Key),
+        decision: action,
+      });
+    }
+    return count;
   });
+  // Committed: push the decision live to the vendor's open tabs.
+  if (vendorNotification) publishNotification(vendorNotification);
 
   if (count === 0) {
     // Lost a race (another request decided it, or it was deleted meanwhile).

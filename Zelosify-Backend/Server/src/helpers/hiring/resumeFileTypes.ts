@@ -13,8 +13,10 @@ export const RESUME_FILE_TYPES = {
 
 export type ResumeExtension = keyof typeof RESUME_FILE_TYPES;
 
-export const MAX_RESUME_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+export const MAX_RESUME_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB (any single file)
 export const MAX_FILES_PER_REQUEST = 10;
+/** Combined size of all files in one submission. */
+export const MAX_TOTAL_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB total
 
 export function getResumeExtension(filename: string): ResumeExtension | null {
   const ext = filename.split(".").pop()?.toLowerCase();

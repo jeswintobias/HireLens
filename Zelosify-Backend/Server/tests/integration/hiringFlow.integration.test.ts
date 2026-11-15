@@ -330,3 +330,113 @@ describe("RBAC + tenant isolation over HTTP", () => {
     ).toBe(404);
   });
 });
+
+describe("notifications tab", () => {
+  it("manager is notified of submissions; vendor of decisions; each sees only their own", async () => {
+    await prisma.notification.deleteMany({ where: { tenantId: { in: [fx.tenantA.tenantId, fx.tenantB.tenantId] } } });
+    const [id] = await submitAndWait(tokens.vendorA, fx.openings.openingA.id, [
+      { name: "notify-a.pdf", buffer: strongPdf() },
+    ]);
+
+    const mgr = await server.request("GET", "/notifications", { token: tokens.managerA });
+    expect(mgr.status).toBe(200);
+    expect(mgr.data.unreadCount).toBe(1);
+    expect(mgr.data.data[0]).toMatchObject({
+      type: "PROFILES_SUBMITTED",
+      title: "1 new profile for Senior Node.js Engineer",
+      link: `/hiring-manager/openings/${fx.openings.openingA.id}`,
+      read: false,
+    });
+
+    expect((await server.request("POST", `/hiring-manager/profiles/${id}/shortlist`, { token: tokens.managerA })).status).toBe(200);
+    // Repeating the decision is idempotent and must not notify twice.
+    await server.request("POST", `/hiring-manager/profiles/${id}/shortlist`, { token: tokens.managerA });
+
+    const vendor = await server.request("GET", "/notifications", { token: tokens.vendorA });
+    expect(vendor.data.data).toHaveLength(1);
+    expect(vendor.data.data[0]).toMatchObject({
+      type: "PROFILE_SHORTLISTED",
+      message: "notify-a.pdf was shortlisted by the hiring manager.",
+      link: `/vendor/openings/${fx.openings.openingA.id}`,
+      profileId: id,
+    });
+
+    // Other users (same tenant or not) see nothing and cannot touch it.
+    for (const t of [tokens.vendorA2, tokens.managerA2, tokens.managerB]) {
+      expect((await server.request("GET", "/notifications/unread-count", { token: t })).data.unreadCount).toBe(0);
+    }
+    const nid = vendor.data.data[0].id;
+    expect((await server.request("POST", `/notifications/${nid}/read`, { token: tokens.vendorA2 })).status).toBe(404);
+
+    expect((await server.request("POST", `/notifications/${nid}/read`, { token: tokens.vendorA })).status).toBe(200);
+    expect((await server.request("GET", "/notifications/unread-count", { token: tokens.vendorA })).data.unreadCount).toBe(0);
+    expect((await server.request("POST", "/notifications/read-all", { token: tokens.managerA })).data.updated).toBe(1);
+  });
+
+  it("requires sign-in and validates ids", async () => {
+    expect((await server.request("GET", "/notifications")).status).toBe(401);
+    expect((await server.request("POST", "/notifications/not-a-uuid/read", { token: tokens.vendorA })).status).toBe(400);
+  });
+});
+
+describe("10 MB total upload cap", () => {
+  it("rejects a submission whose files add up to more than 10 MB", async () => {
+    const big = () => Buffer.concat([Buffer.from("%PDF-1.4\n"), Buffer.alloc(6 * 1024 * 1024, 32)]);
+    const res = await uploadProfiles(server.request, tokens.vendorA, fx.openings.openingA.id, [
+      { name: "big-1.pdf", buffer: big() },
+      { name: "big-2.pdf", buffer: big() },
+    ]);
+    expect(res.status).toBe(413);
+    expect(res.data.message).toMatch(/Total upload size must be at most 10 MB/);
+    expect(await prisma.hiringProfile.count({ where: { s3Key: { contains: "big-1.pdf" } } })).toBe(0);
+  });
+});
+
+describe("live notifications (Server-Sent Events)", () => {
+  it("pushes the submission to the manager's open stream instantly; others get nothing", async () => {
+    const manager = await server.openStream(tokens.managerA);
+    const otherManager = await server.openStream(tokens.managerA2);
+    const otherTenant = await server.openStream(tokens.managerB);
+    try {
+      expect(manager.status).toBe(200);
+      await waitFor(async () => manager.events.some((e) => e.event === "ready"));
+
+      const [id] = await submitAndWait(tokens.vendorA, fx.openings.openingA.id, [{ name: "live.pdf", buffer: strongPdf() }]);
+      await waitFor(async () => manager.events.some((e) => e.event === "notification"), 3000);
+      expect(manager.events.find((e) => e.event === "notification")!.data).toMatchObject({
+        type: "PROFILES_SUBMITTED",
+        openingId: fx.openings.openingA.id,
+        read: false,
+      });
+
+      // The vendor's stream receives the decision the moment it is committed.
+      const vendor = await server.openStream(tokens.vendorA);
+      await waitFor(async () => vendor.events.some((e) => e.event === "ready"));
+      await server.request("POST", `/hiring-manager/profiles/${id}/reject`, { token: tokens.managerA });
+      await waitFor(async () => vendor.events.some((e) => e.event === "notification"), 3000);
+      expect(vendor.events.find((e) => e.event === "notification")!.data).toMatchObject({
+        type: "PROFILE_REJECTED",
+        profileId: id,
+      });
+      vendor.close();
+
+      expect(otherManager.events.filter((e) => e.event === "notification")).toEqual([]);
+      expect(otherTenant.events.filter((e) => e.event === "notification")).toEqual([]);
+    } finally {
+      manager.close();
+      otherManager.close();
+      otherTenant.close();
+    }
+  });
+
+  it("requires sign-in and caps open streams per user", async () => {
+    const anon = await server.request("GET", "/notifications/stream");
+    expect(anon.status).toBe(401);
+
+    const streams = [];
+    for (let i = 0; i < 5; i++) streams.push(await server.openStream(tokens.vendorA2));
+    const sixth = await server.openStream(tokens.vendorA2);
+    expect(sixth.status).toBe(429);
+    streams.forEach((s) => s.close());
+  });
+});

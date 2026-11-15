@@ -5,6 +5,7 @@ import type { Server } from "http";
 import vendorRoutes from "../../src/routers/vendor/vendorRoutes";
 import hiringManagerRoutes from "../../src/routers/hiring/hiringManagerRoutes";
 import localAuthRoutes from "../../src/routers/auth/local/localAuthRoutes";
+import notificationRoutes from "../../src/routers/notifications/notificationRoutes";
 
 /**
  * The production routers (with the real authenticate + authorize
@@ -18,6 +19,7 @@ export async function startTestServer() {
   app.use("/api/v1/auth", localAuthRoutes);
   app.use("/api/v1/vendor", vendorRoutes);
   app.use("/api/v1/hiring-manager", hiringManagerRoutes);
+  app.use("/api/v1/notifications", notificationRoutes);
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     res.status(500).json({ error: "Internal Server Error", message: err.message });
   });
@@ -46,8 +48,43 @@ export async function startTestServer() {
     return { status: res.status, data: data as any, headers: res.headers };
   };
 
+  /** Opens the notification stream (SSE) and collects events until aborted. */
+  const openStream = async (token: string) => {
+    const controller = new AbortController();
+    const events: { event: string; data: any }[] = [];
+    const res = await fetch(`${baseUrl}/notifications/stream`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    });
+    if (res.status !== 200) return { status: res.status, events, close: () => controller.abort() };
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    (async () => {
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let idx;
+          while ((idx = buffer.indexOf("\n\n")) >= 0) {
+            const block = buffer.slice(0, idx);
+            buffer = buffer.slice(idx + 2);
+            const event = /^event: (.+)$/m.exec(block)?.[1];
+            const data = /^data: (.+)$/m.exec(block)?.[1];
+            if (event) events.push({ event, data: data ? JSON.parse(data) : null });
+          }
+        }
+      } catch {
+        /* aborted */
+      }
+    })();
+    return { status: res.status, events, close: () => controller.abort() };
+  };
+
   return {
     request,
+    openStream,
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 }
