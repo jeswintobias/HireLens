@@ -52,7 +52,8 @@ npm run dev                     # http://localhost:5001
 
 # 3. Demo data (tenant "Bruce Wayne Corp")
 npm run seed:openings           # first run creates the tenant and prints its tenantId
-#    → register a HIRING_MANAGER and an IT_VENDOR with that tenantId (POST /api/v1/auth/register)
+#    → sign up a HIRING_MANAGER and an IT_VENDOR with that ID as "Organization ID"
+#      (UI: http://localhost:5173/register, or POST /api/v1/auth/register)
 npm run seed:openings           # second run creates the openings, assigned to the tenant's managers
 
 # 4. Frontend
@@ -62,8 +63,10 @@ npm install
 npm run dev                     # http://localhost:5173
 ```
 
-Keycloak realm, client, roles and test users are set up as described in the original
-setup guide (users are registered via `POST /api/v1/auth/register`). In development the
+Keycloak realm, client and roles are set up as described in the original setup guide.
+Users sign up at **`/register`**: choose *IT Vendor* or *Hiring Manager*, enter the Organization ID,
+then scan the QR code with an authenticator app (Google Authenticator, Microsoft Authenticator, Authy).
+Every sign-in asks for the 6-digit code. In development the
 registration endpoint accepts every role. See [registration policy](#62-fixes-applied-to-the-starter-code)
 for production behaviour.
 
@@ -380,6 +383,13 @@ and the **LLM** by a scripted fake that speaks the same tool-calling protocol (a
 - **LLM via REST (axios)**, no provider SDKs: no new dependencies; Gemini and Groq share one interface.
 - **Non-English injection text** is not pattern-detected (the score is still unaffected). White text on a gradient or
   picture background, or text hidden behind a picture's white area, cannot be judged without OCR and is treated as visible.
+- **Sign-up and SSO in the starter UI:** the original sign-up form could not work: it sent `companyName`
+  instead of the required `tenantId`, offered roles that do not exist, and redirected to a `/setup-totp` page
+  and `/auth/verify-initial-totp` endpoint that were never implemented. It was rebuilt (Organization ID, the two
+  personas, an on-page 2FA enrolment step). The Google/Microsoft buttons call backend routes that do not exist
+  and need OAuth apps registered in Keycloak, so they are hidden behind `NEXT_PUBLIC_ENABLE_SSO` (default off).
+- **Landing page:** the starter's landing page was an empty page with a navbar; it now explains the product
+  (hero, how it works, key features) in light and dark mode.
 - **Empty placeholder files** (`helper1.ts`, `model1.ts`, `dummySlice1.js`, the MongoDB stubs, the unfinished
   resource-request attachment controllers, etc.) come empty from the starter's Initial commit. Nothing imports them,
   so they were left unchanged; the hiring module lives in its own files following the same folder structure.
