@@ -22,6 +22,11 @@ export default function LoginLayout() {
   });
   const [error, setError] = useState({});
   const [loginStage, setLoginStage] = useState("credentials"); // 'credentials' or 'totp'
+  // Set when the session guard sends the user back here (?expired=1).
+  const [sessionExpired, setSessionExpired] = useState(false);
+  useEffect(() => {
+    setSessionExpired(new URLSearchParams(window.location.search).get("expired") === "1");
+  }, []);
 
   // Use our custom auth hook instead of direct Redux access
   const {
@@ -174,6 +179,15 @@ export default function LoginLayout() {
       className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg"
     >
       <BoxHeader />
+
+      {sessionExpired && !error.general && (
+        <div
+          role="status"
+          className="bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 p-3 rounded-lg mb-4 text-sm"
+        >
+          Your session has expired. Please sign in again.
+        </div>
+      )}
 
       {error.general && (
         <motion.div

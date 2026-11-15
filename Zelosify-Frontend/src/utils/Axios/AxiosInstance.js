@@ -18,28 +18,50 @@ axiosInstance.interceptors.request.use(
   }
 );
 
-// Add response interceptor for logging
+/**
+ * Silent session refresh: when an API call fails with 401 because the access
+ * token expired, renew it once via the httpOnly refresh_token cookie and retry
+ * the call. Concurrent 401s share one refresh request. If the session has
+ * ended, go to sign-in with an "expired" notice.
+ */
+const AUTH_PATHS = ["/auth/verify-login", "/auth/verify-totp", "/auth/register", "/auth/refresh", "/auth/logout"];
+let refreshInFlight = null;
+
+const isAuthCall = (config) => AUTH_PATHS.some((p) => (config?.url || "").includes(p));
+
+const redirectToLogin = () => {
+  if (typeof window === "undefined") return;
+  const publicPage = ["/", "/login", "/register"].includes(window.location.pathname);
+  if (!publicPage) window.location.replace("/login?expired=1");
+};
+
 axiosInstance.interceptors.response.use(
-  (response) => {
-    console.log(
-      `API Response [${
-        response.status
-      }]: ${response.config.method.toUpperCase()} ${response.config.url}`
-    );
-    return response;
-  },
-  (error) => {
-    if (error.response) {
+  (response) => response,
+  async (error) => {
+    const { config, response } = error;
+    if (response) {
       console.error(
-        `API Error [${
-          error.response.status
-        }]: ${error.config.method.toUpperCase()} ${error.config.url}`,
-        error.response.data
+        `API Error [${response.status}]: ${config?.method?.toUpperCase()} ${config?.url}`,
+        response.data
       );
     } else {
       console.error(`API Error: ${error.message}`);
     }
-    return Promise.reject(error);
+
+    if (response?.status !== 401 || !config || config._retried || isAuthCall(config)) {
+      return Promise.reject(error);
+    }
+
+    try {
+      refreshInFlight ??= axiosInstance.post("/auth/refresh").finally(() => {
+        refreshInFlight = null;
+      });
+      await refreshInFlight;
+    } catch {
+      redirectToLogin();
+      return Promise.reject(error);
+    }
+    return axiosInstance({ ...config, _retried: true });
   }
 );
 

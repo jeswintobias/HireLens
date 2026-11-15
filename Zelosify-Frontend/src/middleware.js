@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { extractRoleFromToken } from "@/utils/Auth/middlewareUtils";
+import { verifyAccessToken } from "@/utils/Auth/verifyToken";
 
 // Areas that only one role may open, and each role's landing page.
 const ROLE_GUARDED_AREAS = [
@@ -13,7 +14,7 @@ const ROLE_HOME = {
   VENDOR_MANAGER: "/user",
 };
 
-export function middleware(request) {
+export async function middleware(request) {
   // Get the pathname of the request
   const path = request.nextUrl.pathname;
 
@@ -22,6 +23,7 @@ export function middleware(request) {
     path === "/login" ||
     path === "/register" ||
     path === "/setup-totp" ||
+    path === "/session/restore" ||
     path.startsWith("/api/");
 
   // Check if we have auth cookies
@@ -29,8 +31,12 @@ export function middleware(request) {
   const refreshToken = request.cookies.get("refresh_token")?.value;
   const registrationToken = request.cookies.get("registration_token")?.value;
 
-  // A user is considered authenticated if they have BOTH tokens
-  const isAuthenticated = !!accessToken && !!refreshToken;
+  // Authenticated = the access token's RS256 signature and expiry check out
+  // (cookies alone can be forged). An expired/invalid access token with a
+  // refresh token present can be renewed silently on /session/restore.
+  const session = accessToken ? await verifyAccessToken(accessToken) : null;
+  const isAuthenticated = !!session;
+  const canRestore = !isAuthenticated && !!refreshToken;
   // A user is in registration process if they have the special token
   const isRegistering = !!registrationToken;
 
@@ -102,9 +108,19 @@ export function middleware(request) {
     }
   }
 
-  // Redirect unauthenticated users to login page
+  // Expired session with a refresh token: renew it, then come back here.
+  if (canRestore && (!isPublicPath || path === "/login")) {
+    const restore = new URL("/session/restore", request.url);
+    restore.searchParams.set("next", `${path}${request.nextUrl.search}`);
+    return NextResponse.redirect(restore);
+  }
+
+  // Redirect unauthenticated users to login page, dropping invalid cookies
   if (!isPublicPath && !isAuthenticated) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    const toLogin = NextResponse.redirect(new URL("/login", request.url));
+    if (accessToken) toLogin.cookies.delete("access_token");
+    toLogin.cookies.delete("role");
+    return toLogin;
   }
 
   // UI-level route guard: role-specific areas are only reachable by that
