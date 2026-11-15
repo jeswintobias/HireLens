@@ -44,7 +44,7 @@ cd Zelosify-Backend/Server
 docker compose up -d
 
 # 2. Backend
-cp .env.example .env            # fill in values (see comments in the file)
+cp -n .env.example .env         # fresh clone only (-n never overwrites an existing .env); then fill in values
 npm install
 npm run prisma:generate
 npm run prisma:migrate          # applies the Opening / hiringProfile / RecommendationRun models
@@ -57,7 +57,7 @@ npm run seed:openings           # second run creates the openings, assigned to t
 
 # 4. Frontend
 cd ../../Zelosify-Frontend
-cp .env.example .env
+cp -n .env.example .env         # fresh clone only
 npm install
 npm run dev                     # http://localhost:5173
 ```
