@@ -17,7 +17,7 @@ while the **score and decision come from deterministic engines** that the model 
 | Backend | Express + TypeScript (ESM), Prisma 6, PostgreSQL, Keycloak (RS256 JWT), AWS S3 |
 | Frontend | Next.js 15, React 19, Redux Toolkit, Tailwind |
 | AI | Gemini (default) or Groq, via a provider-neutral tool-calling interface |
-| Tests | Vitest: 164 tests (unit, HTTP integration, 100-profile performance) |
+| Tests | Vitest: 185 tests (unit, HTTP integration, 100-profile performance) |
 
 ---
 
@@ -320,6 +320,7 @@ gave it the wrong bytes.
 | **Brute force**: unlimited TOTP / password guesses | `attemptLimiter.ts` (no extra packages): 5 failures per account (TOTP) or account+IP (password), then a 15-min lock, plus 20 per IP. In-flight requests count, so parallel bursts cannot bypass it. `429` + `Retry-After`. Wrong registration keys are limited too |
 | **Operator injection**: auth endpoints passed JSON body values straight into Prisma `where` clauses, so `{"usernameOrEmail": {"contains": ""}}` matched a real user (email enumeration, bypassed the per-account limit) | `requireStringFields` middleware: auth fields must be plain strings (≤ 512 chars), otherwise `400`. (No raw SQL exists anywhere; Prisma parameterizes every value, so classic SQL injection is not possible) |
 | **Unverified route guard**: Next.js middleware only checked that token cookies *existed* and read the role unverified, so hand-made cookies opened any role's page frame (the API still refused them) | The middleware verifies the access token's **RS256 signature and expiry** with Web Crypto (no packages), using the realm public key from `GET /auth/public-key` (or `KEYCLOAK_RS256_SIG`). Rejects `alg: none` and edited tokens; fails closed |
+| **No sign-up validation / half-created accounts**: registration accepted any text (phone `abc`, name `123`, weak passwords, padded values); a Keycloak "user exists" became a 500; a failed role assignment was only logged (user created without a role); a DB failure left an orphan Keycloak user | Field rules enforced on the backend (`registrationValidation.ts`, per-field `400`, values trimmed) and mirrored in the form for inline messages; Keycloak `409` → "already registered"; role assignment is mandatory and any failure after the Keycloak user is created deletes it again |
 | **No session refresh**: the refresh token was stored but never used, so users were sent to sign-in when the 4-hour access cookie ended | `POST /auth/refresh` (httpOnly cookie → new token pair, tokens never in the body). The route guard sends expired sessions to `/session/restore`, which renews silently and returns to the requested page (open-redirect safe, loop-guarded). The API client retries a `401` once after a shared refresh. If the Keycloak session has ended: sign-in with a "session expired" notice |
 
 Sessions live in `httpOnly`, `sameSite=strict` cookies (unreadable by page scripts), so a signed-in user stays signed in
