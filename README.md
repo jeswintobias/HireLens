@@ -1,7 +1,9 @@
-# Zelosify: Contract Hiring with an AI Recommendation Agent
+# HireLens
+
+**Contract hiring with an AI recommendation agent.**
 
 A multi-tenant **IT Vendor ↔ Hiring Manager** contract hiring module, built on the
-Zelosify starter monorepo:
+Zelosify starter monorepo for the Zelosify technical assignment:
 
 - **IT vendors** browse their tenant's open contract openings and submit candidate resumes (PDF / PPTX).
 - An **LLM tool-calling agent** screens each submitted resume against the opening, asynchronously.
@@ -351,5 +353,8 @@ and the **LLM** by a scripted fake that speaks the same tool-calling protocol (a
 - **LLM via REST (axios)**, no provider SDKs: no new dependencies; Gemini and Groq share one interface.
 - **Non-English injection text** is not pattern-detected (the score is still unaffected). White text on a gradient or
   picture background, or text hidden behind a picture's white area, cannot be judged without OCR and is treated as visible.
+- **Empty placeholder files** (`helper1.ts`, `model1.ts`, `dummySlice1.js`, the MongoDB stubs, the unfinished
+  resource-request attachment controllers, etc.) come empty from the starter's Initial commit. Nothing imports them,
+  so they were left unchanged; the hiring module lives in its own files following the same folder structure.
 - **Responsive layout:** the starter dashboard layout shows a "use a larger screen" overlay below 1024 px. The new
   screens are responsive, but the overlay belongs to the existing layout and was left unchanged.
