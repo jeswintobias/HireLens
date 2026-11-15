@@ -5,6 +5,9 @@ export {
   verifyTOTP,
 } from "./auth/local/localAuthController.js";
 
+// ===== Session refresh + public key (route guard) =====
+export { refreshSession, getPublicKey } from "./auth/local/login/refreshSession.js";
+
 // ===== Unified AUTH Logout =====
 export { logout } from "./auth/logout(unified)/logout.js";
 

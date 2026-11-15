@@ -124,3 +124,37 @@ describe("privilege escalation via public registration", () => {
     }
   });
 });
+
+describe("operator injection on auth endpoints", () => {
+  it.each([
+    ["/auth/verify-login", { usernameOrEmail: { contains: "" }, password: "x" }, "usernameOrEmail"],
+    ["/auth/verify-login", { usernameOrEmail: "a", password: { not: "" } }, "password"],
+    ["/auth/verify-totp", { totp: { gt: "" } }, "totp"],
+    ["/auth/register", { username: "x", tenantId: { not: "" } }, "tenantId"],
+  ])("POST %s rejects a Prisma filter object (%o) with 400", async (path, body, field) => {
+    const r = await server.request("POST", path, { body });
+    expect(r.status).toBe(400);
+    expect(r.data.message).toBe(`Invalid value for ${field}`);
+  });
+
+  it("SQL-style text is just text", async () => {
+    const r = await server.request("POST", "/auth/verify-login", {
+      body: { usernameOrEmail: "' OR 1=1 --", password: "x" },
+    });
+    expect(r.status).toBe(401);
+  });
+});
+
+describe("session refresh + public key", () => {
+  it("refresh without a session is 401", async () => {
+    expect((await server.request("POST", "/auth/refresh")).status).toBe(401);
+  });
+
+  it("public key endpoint serves the realm RS256 key (public data only)", async () => {
+    const r = await server.request("GET", "/auth/public-key");
+    expect(r.status).toBe(200);
+    expect(r.data.algorithm).toBe("RS256");
+    expect(r.data.publicKey).toMatch(/^MII[A-Za-z0-9+/=]+$/);
+    expect(Object.keys(r.data).sort()).toEqual(["algorithm", "publicKey"]);
+  });
+});
