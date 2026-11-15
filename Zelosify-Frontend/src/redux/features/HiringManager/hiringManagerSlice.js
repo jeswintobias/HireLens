@@ -77,6 +77,9 @@ export const reviewProfile = createAsyncThunk(
       const response = await axiosInstance.post(`/hiring-manager/profiles/${profileId}/${action}`);
       return { profile: response.data.data, message: response.data.message };
     } catch (error) {
+      if (error?.response?.status === 404) {
+        return rejectWithValue("This profile is no longer available: the vendor withdrew it.");
+      }
       return rejectWithValue(getApiErrorMessage(error, `Failed to ${action} profile`));
     }
   }

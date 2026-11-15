@@ -40,8 +40,12 @@ axiosInstance.interceptors.response.use(
   async (error) => {
     const { config, response } = error;
     if (response) {
-      console.error(
-        `API Error [${response.status}]: ${config?.method?.toUpperCase()} ${config?.url}`,
+      // 4xx are expected outcomes (not found, validation, conflicts) that the
+      // UI handles with a message; only server/network failures are errors.
+      // (console.error would also open the Next.js dev overlay.)
+      const log = response.status >= 500 ? console.error : console.warn;
+      log(
+        `API ${response.status >= 500 ? "Error" : "Warning"} [${response.status}]: ${config?.method?.toUpperCase()} ${config?.url}`,
         response.data
       );
     } else {
