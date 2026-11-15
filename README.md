@@ -17,7 +17,7 @@ while the **score and decision come from deterministic engines** that the model 
 | Backend | Express + TypeScript (ESM), Prisma 6, PostgreSQL, Keycloak (RS256 JWT), AWS S3 |
 | Frontend | Next.js 15, React 19, Redux Toolkit, Tailwind |
 | AI | Gemini (default) or Groq, via a provider-neutral tool-calling interface |
-| Tests | Vitest: 185 tests (unit, HTTP integration, 100-profile performance) |
+| Tests | Vitest: 190 tests (unit, HTTP integration, 100-profile performance) |
 
 ---
 
@@ -51,9 +51,9 @@ npm run prisma:migrate          # applies the Opening / hiringProfile / Recommen
 npm run dev                     # http://localhost:5001
 
 # 3. Demo data (tenant "Bruce Wayne Corp")
-npm run seed:openings           # first run creates the tenant and prints its tenantId
-#    → sign up a HIRING_MANAGER and an IT_VENDOR with that ID as "Organization ID"
-#      (UI: http://localhost:5173/register, or POST /api/v1/auth/register)
+npm run seed:openings           # first run creates the tenant "Bruce Wayne Corp"
+#    → sign up a HIRING_MANAGER and an IT_VENDOR with Company "Bruce Wayne Corp"
+#      (UI: http://localhost:5173/register, or POST /api/v1/auth/register with tenantId)
 npm run seed:openings           # second run creates the openings, assigned to the tenant's managers
 
 # 4. Frontend
@@ -64,7 +64,8 @@ npm run dev                     # http://localhost:5173
 ```
 
 Keycloak realm, client and roles are set up as described in the original setup guide.
-Users sign up at **`/register`**: choose *IT Vendor* or *Hiring Manager*, enter the Organization ID,
+Users sign up at **`/register`**: choose *IT Vendor* or *Hiring Manager*, enter the company name
+(e.g. *Bruce Wayne Corp*; case-insensitive, an Organization ID also works),
 then scan the QR code with an authenticator app (Google Authenticator, Microsoft Authenticator, Authy).
 Every sign-in asks for the 6-digit code. In development the
 registration endpoint accepts every role. See [registration policy](#62-fixes-applied-to-the-starter-code)
@@ -393,8 +394,9 @@ and the **LLM** by a scripted fake that speaks the same tool-calling protocol (a
   picture background, or text hidden behind a picture's white area, cannot be judged without OCR and is treated as visible.
 - **Sign-up and SSO in the starter UI:** the original sign-up form could not work: it sent `companyName`
   instead of the required `tenantId`, offered roles that do not exist, and redirected to a `/setup-totp` page
-  and `/auth/verify-initial-totp` endpoint that were never implemented. It was rebuilt (Organization ID, the two
-  personas, an on-page 2FA enrolment step). The Google/Microsoft buttons call backend routes that do not exist
+  and `/auth/verify-initial-totp` endpoint that were never implemented. It was rebuilt (company name or Organization ID,
+  the two personas, an on-page 2FA enrolment step). Registration also no longer issues a session: the starter set
+  login cookies at sign-up, skipping 2FA and letting users skip enrolment, so the first sign-in now uses password + code. The Google/Microsoft buttons call backend routes that do not exist
   and need OAuth apps registered in Keycloak, so they are hidden behind `NEXT_PUBLIC_ENABLE_SSO` (default off).
 - **Landing page:** the starter's landing page was an empty page with a navbar; it now explains the product
   (hero, how it works, key features) in light and dark mode.

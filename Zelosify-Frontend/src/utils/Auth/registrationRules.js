@@ -8,13 +8,13 @@ const NAME = /^[\p{L}][\p{L} .'-]{0,49}$/u;
 const USERNAME = /^[A-Za-z][A-Za-z0-9._-]{2,29}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const PHONE_CHARS = /^\+?[0-9 ()-]+$/;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const NAME_MSG = "Use 1–50 letters (spaces, apostrophes, dots and hyphens allowed)";
 
 /** Listed in on-screen order, so the first invalid field gets focus. */
 export const REGISTRATION_RULES = {
-  tenantId: (v) => (UUID.test(v) ? null : "Organization IDs look like xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"),
+  // Company name (e.g. "Bruce Wayne Corp") or an Organization ID; the backend resolves it.
+  company: (v) => (v.length >= 2 && v.length <= 100 ? null : "Use 2–100 characters"),
   firstName: (v) => (NAME.test(v) ? null : NAME_MSG),
   lastName: (v) => (NAME.test(v) ? null : NAME_MSG),
   username: (v) =>
@@ -37,7 +37,7 @@ export const REGISTRATION_RULES = {
   confirmPassword: (v, all) => (v === all.password ? null : "Passwords do not match"),
 };
 
-const TRIMMED = new Set(["firstName", "lastName", "username", "email", "phoneNumber", "department", "tenantId"]);
+const TRIMMED = new Set(["firstName", "lastName", "username", "email", "phoneNumber", "department", "company"]);
 
 /** Error message for one field, or null. Empty values are "required". */
 export function validateField(name, values) {

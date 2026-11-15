@@ -176,7 +176,7 @@ export default function Register() {
     email: "",
     phoneNumber: "",
     department: "",
-    tenantId: "",
+    company: "",
     role: "IT_VENDOR",
     password: "",
     confirmPassword: "",
@@ -254,14 +254,17 @@ export default function Register() {
         const { status, data } = err.response ?? {};
         if (!err.response) setError("Cannot reach the server. Is the backend running?");
         else if (data?.fieldErrors) {
-          setFieldErrors(data.fieldErrors);
+          // The API also accepts tenantId; show any organization error on the Company field.
+          const { tenantId, ...rest } = data.fieldErrors;
+          const mapped = tenantId ? { company: tenantId, ...rest } : rest;
+          setFieldErrors(mapped);
           setError(data.message || "Please fix the highlighted fields.");
-          focusField(Object.keys(data.fieldErrors)[0]);
+          focusField(Object.keys(mapped)[0]);
         } else if (status === 400 && data?.message === "User already exists.")
           setError("That username or email is already registered. Try signing in.");
         else if (status === 400 && data?.message === "Invalid tenant ID.") {
-          setFieldErrors((errs) => ({ ...errs, tenantId: "Organization ID not found. Check the ID your administrator gave you." }));
-          focusField("tenantId");
+          setFieldErrors((errs) => ({ ...errs, company: "Organization not found. Check the name or ID." }));
+          focusField("company");
         } else if (status === 429) setError(data?.message || "Too many attempts. Please wait and try again.");
         else setError(data?.message || data?.error || "Registration failed. Please try again.");
       } finally {
@@ -357,17 +360,17 @@ export default function Register() {
           </fieldset>
 
           <Field
-            label="Organization ID"
-            name="tenantId"
-            error={fieldErrors.tenantId}
-            hint="Your administrator shares this ID. For the demo data it is printed by npm run seed:openings."
+            label="Company"
+            name="company"
+            error={fieldErrors.company}
+            hint="Your company's name as registered, e.g. Bruce Wayne Corp. An Organization ID also works."
           >
             <div className="relative">
               <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <input
-                {...fieldProps("tenantId", { hint: true, className: "pl-9" })}
-                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                autoComplete="off"
+                {...fieldProps("company", { hint: true, className: "pl-9" })}
+                placeholder="e.g. Bruce Wayne Corp"
+                autoComplete="organization"
               />
             </div>
           </Field>
