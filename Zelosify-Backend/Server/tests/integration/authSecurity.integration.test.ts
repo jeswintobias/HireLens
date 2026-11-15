@@ -93,7 +93,7 @@ describe("privilege escalation via public registration", () => {
     lastName: "B",
     phoneNumber: "0000000000",
     tenantId: fx.tenantA.tenantId,
-    department: "X",
+    department: "Engineering",
     role,
   });
 
@@ -156,5 +156,21 @@ describe("session refresh + public key", () => {
     expect(r.data.algorithm).toBe("RS256");
     expect(r.data.publicKey).toMatch(/^MII[A-Za-z0-9+/=]+$/);
     expect(Object.keys(r.data).sort()).toEqual(["algorithm", "publicKey"]);
+  });
+});
+
+describe("registration field validation", () => {
+  it("returns per-field messages and creates nothing", async () => {
+    const r = await server.request("POST", "/auth/register", {
+      body: {
+        username: "1 bad", email: "nope", password: "aaaaaaaa", firstName: "123", lastName: "Ok",
+        phoneNumber: "abc", tenantId: "hello", department: "x", role: "IT_VENDOR",
+      },
+    });
+    expect(r.status).toBe(400);
+    expect(Object.keys(r.data.fieldErrors).sort()).toEqual(
+      ["department", "email", "firstName", "password", "phoneNumber", "tenantId", "username"]
+    );
+    expect(await prisma.user.count({ where: { email: "nope" } })).toBe(0);
   });
 });

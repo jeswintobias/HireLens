@@ -94,49 +94,23 @@ export const register = asyncHandler(
       // Generate a TOTP secret for 2FA
       const totpSecret = authenticator.generateSecret();
 
-      // Create the user in Keycloak
-      const keycloakUser = await createKeycloakUser(adminToken, {
-        username,
-        email,
-        firstName: firstName || username,
-        lastName: lastName || "",
-        enabled: true,
-        credentials: [{ type: "password", value: password, temporary: false }],
-      });
-
-      //Assigning role to a user in keycloak
-      if (keycloakUser.id && role) {
-        try {
-          // Attempt to fetch the specified role from Keycloak
-          const roleResponse = await axios.get(
-            `${KEYCLOAK_URL}/admin/realms/${REALM_NAME}/roles/${role}`,
-            { headers: { Authorization: `Bearer ${adminToken}` } }
-          );
-
-          // Check if the role object is valid (e.g. it has an id)
-          if (!roleResponse.data || !roleResponse.data.id) {
-            console.error(`Role "${role}" not found in Keycloak.`);
-          } else {
-            try {
-              // Assign the role to the user in Keycloak
-              await axios.post(
-                `${KEYCLOAK_URL}/admin/realms/${REALM_NAME}/users/${keycloakUser.id}/role-mappings/realm`,
-                [roleResponse.data],
-                { headers: { Authorization: `Bearer ${adminToken}` } }
-              );
-              console.log(
-                `Role "${role}" successfully assigned to user ${keycloakUser.id}.`
-              );
-            } catch (error) {
-              console.error(
-                `Error assigning role "${role}" to user ${keycloakUser.id}:`,
-                error
-              );
-            }
-          }
-        } catch (error) {
-          console.error(`Failed to fetch role "${role}" from Keycloak:`, error);
+      // Create the user in Keycloak (409 = username/email already exists there)
+      let keycloakUser: { id?: string };
+      try {
+        keycloakUser = await createKeycloakUser(adminToken, {
+          username,
+          email,
+          firstName: firstName || username,
+          lastName: lastName || "",
+          enabled: true,
+          credentials: [{ type: "password", value: password, temporary: false }],
+        });
+      } catch (error) {
+        if (axios.isAxiosError(error) && error.response?.status === 409) {
+          res.status(400).json({ message: "User already exists." });
+          return;
         }
+        throw error;
       }
 
       if (!keycloakUser.id) {
@@ -144,35 +118,63 @@ export const register = asyncHandler(
         return;
       }
 
-      // Create user in database
-      const user = await prisma.user.create({
-        data: {
-          username,
-          email,
-          firstName,
-          lastName,
-          phoneNumber,
-          department,
-          role: role as Role,
-          tenantId,
-          externalId: keycloakUser.id,
-          totpSecret,
-          provider: AuthProvider.KEYCLOAK,
-          creator: username,
-        },
-        select: {
-          id: true,
-          username: true,
-          email: true,
-          firstName: true,
-          lastName: true,
-          phoneNumber: true,
-          department: true,
-          role: true,
-          tenantId: true,
-          provider: true,
-        },
-      });
+      // From here on every step must succeed (role assignment included: a
+      // user without a role cannot use the app). On any failure the Keycloak
+      // user is deleted again, so no half-created account is left behind.
+      const adminHeaders = { headers: { Authorization: `Bearer ${adminToken}` } };
+      let user;
+      try {
+        const roleResponse = await axios.get(
+          `${KEYCLOAK_URL}/admin/realms/${REALM_NAME}/roles/${role}`,
+          adminHeaders
+        );
+        if (!roleResponse.data?.id) {
+          throw new Error(`Role "${role}" not found in Keycloak`);
+        }
+        await axios.post(
+          `${KEYCLOAK_URL}/admin/realms/${REALM_NAME}/users/${keycloakUser.id}/role-mappings/realm`,
+          [roleResponse.data],
+          adminHeaders
+        );
+
+        user = await prisma.user.create({
+          data: {
+            username,
+            email,
+            firstName,
+            lastName,
+            phoneNumber,
+            department,
+            role: role as Role,
+            tenantId,
+            externalId: keycloakUser.id,
+            totpSecret,
+            provider: AuthProvider.KEYCLOAK,
+            creator: username,
+          },
+          select: {
+            id: true,
+            username: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            phoneNumber: true,
+            department: true,
+            role: true,
+            tenantId: true,
+            provider: true,
+          },
+        });
+      } catch (error) {
+        console.error("Registration failed after Keycloak user creation; rolling back:", error);
+        await axios
+          .delete(`${KEYCLOAK_URL}/admin/realms/${REALM_NAME}/users/${keycloakUser.id}`, adminHeaders)
+          .catch((e) =>
+            console.error(`Could not remove partially created Keycloak user ${keycloakUser.id}:`, e?.message)
+          );
+        res.status(500).json({ message: "Registration could not be completed. Please try again." });
+        return;
+      }
 
       // Get initial tokens from Keycloak
       const tokenResponse = await axios.post(
