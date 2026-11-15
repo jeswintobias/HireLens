@@ -26,14 +26,14 @@ export default function LandingNavbar() {
           transition={{ duration: 0.4, ease: "easeOut" }}
           className="fixed top-4 left-0 right-0 z-50 flex justify-center px-4"
         >
-          <nav className="bg-white/90 backdrop-blur-lg shadow-2xl border border-gray-200/50 rounded-2xl px-6 py-3 w-full max-w-4xl">
+          <nav className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-lg shadow-2xl border border-gray-200/50 dark:border-gray-700/60 rounded-2xl px-6 py-3 w-full max-w-4xl">
             <div className="flex items-center justify-between">
               {/* Logo */}
               <Link href="/" className="flex items-center">
                 <img
                   src="/assets/logos/zelosify_Dark.png"
                   alt="Zelosify"
-                  className="h-8 w-auto"
+                  className="h-8 w-auto dark:invert"
                 />
               </Link>
 
@@ -42,10 +42,10 @@ export default function LandingNavbar() {
                 {/* Mobile Menu Button */}
                 <button
                   onClick={() => setIsMenuOpen(true)}
-                  className="md:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                  className="md:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                 >
                   <svg
-                    className="w-5 h-5 text-gray-700"
+                    className="w-5 h-5 text-gray-700 dark:text-gray-200"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"

@@ -11,6 +11,9 @@ import useAuth from "@/hooks/Auth/useAuth";
 import BoxHeader from "./BoxHeader";
 import LoginForm from "./LoginForm";
 
+/** Google / Microsoft sign-in need OAuth apps configured in Keycloak; hidden until then. */
+const SSO_ENABLED = process.env.NEXT_PUBLIC_ENABLE_SSO === "true";
+
 export default function LoginLayout() {
   const [formData, setFormData] = useState({
     usernameOrEmail: "",
@@ -193,6 +196,7 @@ export default function LoginLayout() {
         setLoginStage={setLoginStage}
       />
 
+      {SSO_ENABLED && (
       <div className="mt-6 space-y-4">
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
@@ -218,6 +222,7 @@ export default function LoginLayout() {
           />
         </div>
       </div>
+      )}
 
       <div className="mt-6 text-center">
         <p className="text-sm text-gray-600 dark:text-gray-400">
