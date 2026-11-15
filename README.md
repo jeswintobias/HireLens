@@ -17,7 +17,7 @@ while the **score and decision come from deterministic engines** that the model 
 | Backend | Express + TypeScript (ESM), Prisma 6, PostgreSQL, Keycloak (RS256 JWT), AWS S3 |
 | Frontend | Next.js 15, React 19, Redux Toolkit, Tailwind |
 | AI | Gemini (default) or Groq, via a provider-neutral tool-calling interface |
-| Tests | Vitest: 151 tests (unit, HTTP integration, 100-profile performance) |
+| Tests | Vitest: 164 tests (unit, HTTP integration, 100-profile performance) |
 
 ---
 
@@ -318,6 +318,13 @@ gave it the wrong bytes.
 |---|---|
 | **Privilege escalation**: public `POST /auth/register` accepted any `role` from the body (e.g. `ADMIN`) | `registrationPolicy.ts`: `SELF_REGISTRATION_ROLES` (default none) are open. Every other role needs an admin-issued `X-Registration-Key` (constant-time compare). With no key configured, **production refuses** and development stays open so the setup guide still works |
 | **Brute force**: unlimited TOTP / password guesses | `attemptLimiter.ts` (no extra packages): 5 failures per account (TOTP) or account+IP (password), then a 15-min lock, plus 20 per IP. In-flight requests count, so parallel bursts cannot bypass it. `429` + `Retry-After`. Wrong registration keys are limited too |
+| **Operator injection**: auth endpoints passed JSON body values straight into Prisma `where` clauses, so `{"usernameOrEmail": {"contains": ""}}` matched a real user (email enumeration, bypassed the per-account limit) | `requireStringFields` middleware: auth fields must be plain strings (≤ 512 chars), otherwise `400`. (No raw SQL exists anywhere; Prisma parameterizes every value, so classic SQL injection is not possible) |
+| **Unverified route guard**: Next.js middleware only checked that token cookies *existed* and read the role unverified, so hand-made cookies opened any role's page frame (the API still refused them) | The middleware verifies the access token's **RS256 signature and expiry** with Web Crypto (no packages), using the realm public key from `GET /auth/public-key` (or `KEYCLOAK_RS256_SIG`). Rejects `alg: none` and edited tokens; fails closed |
+| **No session refresh**: the refresh token was stored but never used, so users were sent to sign-in when the 4-hour access cookie ended | `POST /auth/refresh` (httpOnly cookie → new token pair, tokens never in the body). The route guard sends expired sessions to `/session/restore`, which renews silently and returns to the requested page (open-redirect safe, loop-guarded). The API client retries a `401` once after a shared refresh. If the Keycloak session has ended: sign-in with a "session expired" notice |
+
+Sessions live in `httpOnly`, `sameSite=strict` cookies (unreadable by page scripts), so a signed-in user stays signed in
+across reloads and browser restarts until Keycloak ends the session (realm defaults: 30 min idle, 10 h maximum;
+adjust in *Realm settings → Sessions* for longer "remember me" sessions).
 
 ### 6.3 Known issues in the starter code (not changed)
 
@@ -338,7 +345,7 @@ Found while auditing the whole system. They are outside the hiring module's scop
 
 | Topic | Today | At scale |
 |---|---|---|
-| Sessions, user cache, attempt limiter, recommendation queue | In process memory | Redis (sessions, limiter, cache) and a durable queue (e.g. BullMQ / SQS) |
+| User cache, attempt limiter, recommendation queue | In process memory | Redis (sessions, limiter, cache) and a durable queue (e.g. BullMQ / SQS) |
 | Keycloak / DB outages | Startup exits on failure; no circuit breaker | Startup retries with back-off; circuit breakers on Keycloak calls; graceful SIGTERM shutdown |
 | Rate limiting | Auth endpoints only | API gateway / load balancer limits for all routes |
 | Uploads | Through the backend (≤ 10 × 10 MB per request) | Direct-to-S3 presigned uploads + async scanning |
