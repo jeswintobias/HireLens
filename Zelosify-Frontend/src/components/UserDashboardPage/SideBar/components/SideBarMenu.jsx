@@ -39,9 +39,11 @@ export const SidebarMenuButton = memo(
     isOpen,
     hasSubmenu,
     isExpanded,
+    badge,
     className,
     ...props
   }) => {
+    const badgeLabel = badge > 99 ? "99+" : badge;
     return (
       <button
         data-sidebar="menu-button"
@@ -60,7 +62,7 @@ export const SidebarMenuButton = memo(
       `}
         {...props}
       >
-        <div className="flex items-center gap-2">
+        <div className="relative flex items-center gap-2">
           {Icon && (
             <Icon
               className={`h-5 w-5 ${
@@ -71,7 +73,19 @@ export const SidebarMenuButton = memo(
             />
           )}
           {isOpen && <span>{title}</span>}
+          {/* Collapsed sidebar: a dot on the icon stands in for the count */}
+          {!isOpen && badge > 0 && (
+            <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-blue-600" aria-hidden="true" />
+          )}
         </div>
+        {isOpen && badge > 0 && (
+          <span
+            className="ml-auto inline-flex min-w-5 justify-center rounded-full bg-blue-600 px-1.5 py-0.5 text-xs font-semibold text-white"
+            aria-label={`${badge} unread`}
+          >
+            {badgeLabel}
+          </span>
+        )}
         {isOpen &&
           hasSubmenu &&
           (isExpanded ? (

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { ClipboardList, RefreshCw } from "lucide-react";
 import useHiringManager from "@/hooks/HiringManager/useHiringManager";
+import useNotifications from "@/hooks/Notifications/useNotifications";
 import ErrorComponent from "@/components/common/ErrorComponent";
 import EmptyState from "@/components/common/EmptyState";
 import { PageHeader, Pagination, StatusPill, TableSkeletonRows } from "@/components/common/HiringUI";
@@ -31,6 +32,13 @@ export default function ManagerOpeningsLayout() {
     handleClearError();
     handleFetchOpenings({ page, limit: PAGE_SIZE, forceRefresh: true });
   }, [handleClearError, handleFetchOpenings, page]);
+
+  // Live: new submissions update the "Profiles" and "To review" counts.
+  const { lastReceived } = useNotifications();
+  useEffect(() => {
+    if (lastReceived?.type === "PROFILES_SUBMITTED" && pathname === "/hiring-manager/openings") refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastReceived?.id]);
 
   const openDetail = (id) => router.push(`/hiring-manager/openings/${id}`);
 

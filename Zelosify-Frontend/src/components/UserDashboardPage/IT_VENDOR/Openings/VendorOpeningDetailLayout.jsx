@@ -3,6 +3,7 @@ import { useCallback, useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft, Briefcase, CalendarDays, Clock, MapPin, User, Users } from "lucide-react";
 import useVendorOpenings from "@/hooks/Vendor/useVendorOpenings";
+import useNotifications from "@/hooks/Notifications/useNotifications";
 import ErrorBoundary from "@/components/common/ErrorBoundary";
 import ErrorComponent from "@/components/common/ErrorComponent";
 import { DetailSkeleton, InfoItem, PageHeader, StatusPill } from "@/components/common/HiringUI";
@@ -36,6 +37,16 @@ export default function VendorOpeningDetailLayout({ openingId }) {
   }, [openingId, handleFetchOpeningDetail]);
 
   useEffect(() => () => handleClearCurrentOpening(), [handleClearCurrentOpening]);
+
+  // Live: a decision on one of my candidates here → update the status column.
+  const { lastReceived } = useNotifications();
+  useEffect(() => {
+    const decided = lastReceived?.type === "PROFILE_SHORTLISTED" || lastReceived?.type === "PROFILE_REJECTED";
+    if (decided && lastReceived.openingId === openingId) {
+      handleFetchOpeningDetail(openingId, { forceRefresh: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastReceived?.id]);
 
   const retry = useCallback(() => {
     handleClearError();

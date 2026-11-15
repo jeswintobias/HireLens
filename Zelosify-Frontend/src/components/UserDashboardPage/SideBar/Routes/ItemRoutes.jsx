@@ -8,6 +8,7 @@ import {
   Frown,
   Briefcase,
   ClipboardList,
+  Bell,
 } from "lucide-react";
 import { MdDataUsage } from "react-icons/md";
 
@@ -45,6 +46,7 @@ const getOverviewItemsByRole = (role) => {
     case "IT_VENDOR":
       return [
         { title: "Openings", href: "/vendor/openings", icon: Briefcase },
+        { title: "Notifications", href: "/vendor/notifications", icon: Bell, badgeKey: "notifications" },
         { title: "Payments", href: "/vendor/payments", icon: CreditCard },
       ];
 
@@ -55,6 +57,12 @@ const getOverviewItemsByRole = (role) => {
           title: "My Openings",
           href: "/hiring-manager/openings",
           icon: ClipboardList,
+        },
+        {
+          title: "Notifications",
+          href: "/hiring-manager/notifications",
+          icon: Bell,
+          badgeKey: "notifications",
         },
       ];
 

@@ -17,7 +17,7 @@ while the **score and decision come from deterministic engines** that the model 
 | Backend | Express + TypeScript (ESM), Prisma 6, PostgreSQL, Keycloak (RS256 JWT), AWS S3 |
 | Frontend | Next.js 15, React 19, Redux Toolkit, Tailwind |
 | AI | Gemini (default) or Groq, via a provider-neutral tool-calling interface |
-| Tests | Vitest: 190 tests (unit, HTTP integration, 100-profile performance) |
+| Tests | Vitest: 195 tests (unit, HTTP integration, 100-profile performance) |
 
 ---
 
@@ -173,7 +173,7 @@ so the API does not reveal that they exist.
 | GET | `/openings?page&limit` | Open openings in the caller's tenant (paginated, max 50) |
 | GET | `/openings/:id` | Opening detail + the caller's own submitted profiles |
 | POST | `/openings/:id/profiles/presign` | `{ filenames[] }` → encrypted upload tokens (10 min) |
-| POST | `/openings/:id/profiles/upload` | multipart `files[]` + `uploadTokens` (JSON array, same order). ≤10 files, ≤10 MB each, PDF/PPTX |
+| POST | `/openings/:id/profiles/upload` | multipart `files[]` + `uploadTokens` (JSON array, same order). PDF/PPTX, ≤10 files, **≤10 MB in total** (`413` otherwise, checked before buffering) |
 | DELETE | `/profiles/:profileId` | Soft delete (only while `SUBMITTED`) |
 | GET | `/profiles/:profileId/preview` | Streams the resume through the backend (S3 is never exposed) |
 
@@ -190,6 +190,27 @@ so the API does not reveal that they exist.
 | GET | `/profiles/:id/recommendation` | Lightweight status for polling |
 | POST | `/profiles/:id/recommendation/rerun` | Queue a fresh run (`202`; de-duplicated) |
 
+
+### Notifications: `/api/v1/notifications` (any signed-in user, own notifications only)
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/?page&limit&unread=true` | Newest first + `unreadCount` |
+| GET | `/unread-count` | Sidebar badge |
+| POST | `/:id/read` | Mark one read (`404` for anyone else's) |
+| POST | `/read-all` | Mark all read |
+
+Hiring managers are notified when profiles are submitted to their opening; vendors when their candidate is
+shortlisted or rejected. Notifications are written in the **same transaction** as the event (a decision is never
+saved without its notification, and a click that loses the shortlist/reject race notifies nobody). The UI is a
+**Notifications tab** with an unread badge.
+
+**Live updates (Server-Sent Events, no extra packages):** `GET /api/v1/notifications/stream` keeps one connection
+per tab open. After the transaction commits, the notification is pushed instantly: the badge and the tab update,
+one small card slides in (auto-dismisses), and an open opening page refreshes itself, so new candidates appear on
+the manager's page and decisions appear on the vendor's page without reloading. Streams are per user (max 5 per
+user), tenant-checked, kept alive with heartbeats, and reconnect automatically (refreshing the session if needed).
+The event bus is in-process; with several server instances it would move to Redis pub/sub.
 ---
 
 ## 4. AI recommendation agent
@@ -350,7 +371,7 @@ Found while auditing the whole system. They are outside the hiring module's scop
 | User cache, attempt limiter, recommendation queue | In process memory | Redis (sessions, limiter, cache) and a durable queue (e.g. BullMQ / SQS) |
 | Keycloak / DB outages | Startup exits on failure; no circuit breaker | Startup retries with back-off; circuit breakers on Keycloak calls; graceful SIGTERM shutdown |
 | Rate limiting | Auth endpoints only | API gateway / load balancer limits for all routes |
-| Uploads | Through the backend (≤ 10 × 10 MB per request) | Direct-to-S3 presigned uploads + async scanning |
+| Uploads | Through the backend (≤ 10 MB per submission) | Direct-to-S3 presigned uploads + async scanning |
 | Transport | HTTP locally | TLS everywhere (terminated at the load balancer), HSTS, `secure` cookies (already enabled when `NODE_ENV=production`) |
 
 ---

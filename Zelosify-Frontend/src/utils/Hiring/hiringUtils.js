@@ -10,6 +10,8 @@ export const RESUME_ACCEPT = {
 };
 export const MAX_RESUME_SIZE_BYTES = 10 * 1024 * 1024;
 export const MAX_FILES_PER_UPLOAD = 10;
+/** Combined size of all files in one submission (backend enforces it too). */
+export const MAX_TOTAL_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 /** Number of rows above which long lists switch to virtualized rendering. */
 export const VIRTUALIZATION_THRESHOLD = 50;
@@ -98,6 +100,7 @@ export const validateResumeFiles = (incoming, existing = []) => {
   const errors = [];
   const accepted = [];
   const names = new Set(existing.map((f) => f.name.toLowerCase()));
+  let total = existing.reduce((sum, f) => sum + f.size, 0);
 
   for (const file of incoming) {
     const lower = file.name.toLowerCase();
@@ -111,9 +114,12 @@ export const validateResumeFiles = (incoming, existing = []) => {
       errors.push(`${file.name}: already added`);
     } else if (existing.length + accepted.length >= MAX_FILES_PER_UPLOAD) {
       errors.push(`${file.name}: at most ${MAX_FILES_PER_UPLOAD} files per submission`);
+    } else if (total + file.size > MAX_TOTAL_UPLOAD_BYTES) {
+      errors.push(`${file.name}: would take this submission over 10 MB in total`);
     } else {
       names.add(lower);
       accepted.push(file);
+      total += file.size;
     }
   }
   return { accepted, errors };

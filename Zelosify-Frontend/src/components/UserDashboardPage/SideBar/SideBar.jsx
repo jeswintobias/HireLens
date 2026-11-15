@@ -12,6 +12,8 @@ import { usePathname, useRouter } from "next/navigation";
 import SidebarHeader from "./SidebarHeader";
 import useAuth from "@/hooks/Auth/useAuth";
 import SignOutConfirmation from "@/components/UI/SignOutConfirmation";
+import useNotifications from "@/hooks/Notifications/useNotifications";
+import useNotificationStream from "@/hooks/Notifications/useNotificationStream";
 import { getRoleFromCookie } from "@/utils/Auth/roleUtils";
 import {
   SidebarMenu,
@@ -76,6 +78,25 @@ const Sidebar = memo(({ isOpen, toggleSidebar }) => {
     if (!userRole) return [];
     return getSidebarSectionsByRole(userRole);
   }, [userRole]);
+
+  // Unread notifications badge: refreshed on navigation and every minute
+  // while the tab is visible (quietly, no pop-ups).
+  const { unreadCount, handleRefreshUnreadCount } = useNotifications();
+  const hasNotificationsItem = useMemo(
+    () => sidebarSections.some((section) => section.items.some((item) => item.badgeKey === "notifications")),
+    [sidebarSections]
+  );
+  // Live push: badge, Notifications tab and a small card update instantly.
+  useNotificationStream(hasNotificationsItem);
+
+  useEffect(() => {
+    if (!hasNotificationsItem) return undefined;
+    handleRefreshUnreadCount();
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") handleRefreshUnreadCount();
+    }, 60_000);
+    return () => clearInterval(timer);
+  }, [hasNotificationsItem, pathname, handleRefreshUnreadCount]);
 
   // Find which menu items should be expanded based on current path
   useEffect(() => {
@@ -218,6 +239,7 @@ const Sidebar = memo(({ isOpen, toggleSidebar }) => {
                   icon={item.icon}
                   title={item.title}
                   isActive={isActive}
+                  badge={item.badgeKey === "notifications" ? unreadCount : undefined}
                   isOpen={isOpen}
                   hasSubmenu={item.hasSubmenu}
                   isExpanded={isExpanded}
@@ -248,6 +270,7 @@ const Sidebar = memo(({ isOpen, toggleSidebar }) => {
     expandedItems,
     createMenuItemClickHandler,
     sidebarSections,
+    unreadCount,
   ]);
 
   return (

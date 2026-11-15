@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowLeft, Briefcase, CalendarDays, Clock, MapPin, RefreshCw, Search, Users } from "lucide-react";
 import { toast } from "sonner";
 import useHiringManager from "@/hooks/HiringManager/useHiringManager";
+import useNotifications from "@/hooks/Notifications/useNotifications";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import EmptyState from "@/components/common/EmptyState";
 import ErrorBoundary from "@/components/common/ErrorBoundary";
@@ -81,6 +82,16 @@ export default function ManagerOpeningDetailLayout({ openingId }) {
     },
     [handleClearError, handleFetchProfiles, openingId]
   );
+
+  // Live: a vendor just submitted to this opening → show the new cards
+  // (they appear as "analyzing" and fill in as the AI finishes).
+  const { lastReceived } = useNotifications();
+  useEffect(() => {
+    if (lastReceived?.type === "PROFILES_SUBMITTED" && lastReceived.openingId === openingId) {
+      refresh(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastReceived?.id]);
 
   // Poll AI status while any profile is still being processed; refresh the
   // counters once everything has finished.

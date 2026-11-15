@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   MAX_FILES_PER_UPLOAD,
   MAX_RESUME_SIZE_BYTES,
+  MAX_TOTAL_UPLOAD_BYTES,
   RESUME_ACCEPT,
   formatFileSize,
   validateResumeFiles,
@@ -60,7 +61,7 @@ export default function ProfileUploader({ disabled, disabledReason, isSubmitting
           Submit candidate profiles
         </h2>
         <span className="text-xs text-secondary">
-          PDF or PPTX · up to {MAX_FILES_PER_UPLOAD} files · 10 MB each
+          PDF or PPTX · up to {MAX_FILES_PER_UPLOAD} files · 10 MB total per submission
         </span>
       </div>
 
@@ -103,6 +104,11 @@ export default function ProfileUploader({ disabled, disabledReason, isSubmitting
 
           {files.length > 0 && (
             <div className="mt-4">
+              <p className="mb-2 text-xs text-secondary" aria-live="polite">
+                {files.length} file{files.length === 1 ? "" : "s"} ·{" "}
+                {formatFileSize(files.reduce((sum, f) => sum + f.size, 0))} of{" "}
+                {formatFileSize(MAX_TOTAL_UPLOAD_BYTES)} used
+              </p>
               <ul className="divide-y divide-border rounded-md border border-border" aria-label="Files to submit">
                 {files.map((f) => {
                   const Icon = f.name.toLowerCase().endsWith(".pdf") ? FileText : Presentation;
