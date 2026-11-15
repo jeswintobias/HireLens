@@ -174,3 +174,52 @@ describe("registration field validation", () => {
     expect(await prisma.user.count({ where: { email: "nope" } })).toBe(0);
   });
 });
+
+describe("sign-up by company name", () => {
+  const body = (company: string) => ({
+    username: "companyprobe", email: "companyprobe@example.test", password: "Passw0rd99", firstName: "Ann",
+    lastName: "Lee", phoneNumber: "+91 90000 00009", department: "Engineering", role: "HIRING_MANAGER", company,
+  });
+  // In production the registration policy refuses privileged roles with 403. That
+  // response proves the company was resolved (otherwise it would be a 400),
+  // without creating a real Keycloak user.
+  const asProduction = async <T>(fn: () => Promise<T>) => {
+    const before = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      return await fn();
+    } finally {
+      process.env.NODE_ENV = before;
+    }
+  };
+
+  it("resolves an exact company name, ignoring upper/lower case", async () => {
+    const name = (await prisma.tenants.findUniqueOrThrow({ where: { tenantId: fx.tenantA.tenantId } })).companyName;
+    const r = await asProduction(() => server.request("POST", "/auth/register", { body: body(name.toUpperCase()) }));
+    expect(r.status).toBe(403);
+  });
+
+  it("accepts an Organization ID pasted into the company field", async () => {
+    const r = await asProduction(() => server.request("POST", "/auth/register", { body: body(fx.tenantA.tenantId) }));
+    expect(r.status).toBe(403);
+  });
+
+  it("unknown company → 400 on the company field", async () => {
+    const r = await server.request("POST", "/auth/register", { body: body("No Such Company Ltd") });
+    expect(r.status).toBe(400);
+    expect(r.data.fieldErrors.company).toMatch(/No company found/);
+  });
+
+  it("ambiguous company name → asks for the Organization ID", async () => {
+    const dupName = `dup-company-${Date.now()}`;
+    const a = await prisma.tenants.create({ data: { companyName: dupName } });
+    const b = await prisma.tenants.create({ data: { companyName: dupName } });
+    try {
+      const r = await server.request("POST", "/auth/register", { body: body(dupName) });
+      expect(r.status).toBe(400);
+      expect(r.data.fieldErrors.company).toMatch(/Organization ID/);
+    } finally {
+      await prisma.tenants.deleteMany({ where: { tenantId: { in: [a.tenantId, b.tenantId] } } });
+    }
+  });
+});

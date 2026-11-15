@@ -18,6 +18,7 @@ import {
 } from "../../../controllers/controllers.js";
 import { requireStringFields } from "../../../middlewares/security/requireStringFields.js";
 import { validateRegistrationBody } from "../../../helpers/auth/registrationValidation.js";
+import { resolveCompany } from "../../../helpers/auth/resolveCompany.js";
 import { AuthenticatedRequest } from "../../../types/common.js";
 import {
   loginAccountLimiter,
@@ -63,8 +64,9 @@ const router = Router();
  */
 router.post(
   "/register",
-  requireStringFields(["username", "email", "password", "firstName", "lastName", "phoneNumber", "tenantId", "department", "role"]),
+  requireStringFields(["username", "email", "password", "firstName", "lastName", "phoneNumber", "tenantId", "company", "department", "role"]),
   validateRegistrationBody,
+  resolveCompany,
   registerKeyLimiter,
   wrapHandler(register)
 );

@@ -7,6 +7,10 @@ import type { NextFunction, Request, Response } from "express";
  *
  * Values are trimmed before checking and saving, so " vendor1 " cannot be
  * stored and then fail to match at login.
+ *
+ * The organization can be given as `company` (a company name such as
+ * "Bruce Wayne Corp", or an Organization ID) or as `tenantId`; see
+ * resolveCompany.ts for the lookup.
  */
 
 export type RegistrationField =
@@ -16,8 +20,10 @@ export type RegistrationField =
   | "email"
   | "phoneNumber"
   | "department"
-  | "tenantId"
   | "password";
+
+/** Organization is given either as `company` (name or ID) or `tenantId` (ID). */
+export type OrganizationField = "company" | "tenantId";
 
 const NAME = /^[\p{L}][\p{L} .'-]{0,49}$/u;
 const USERNAME = /^[A-Za-z][A-Za-z0-9._-]{2,29}$/;
@@ -39,7 +45,6 @@ export const REGISTRATION_RULES: Record<RegistrationField, (v: string, all: Reco
       : "Enter 7–15 digits (an optional leading + and spaces or dashes are fine)";
   },
   department: (v) => (v.length >= 2 && v.length <= 60 ? null : "Use 2–60 characters"),
-  tenantId: (v) => (UUID.test(v) ? null : "Organization IDs look like xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"),
   password: (v, all) => {
     if (v.length < 8 || v.length > 128) return "Use 8–128 characters";
     if (!/[A-Za-z]/.test(v) || !/[0-9]/.test(v)) return "Include at least one letter and one number";
@@ -49,16 +54,30 @@ export const REGISTRATION_RULES: Record<RegistrationField, (v: string, all: Reco
   },
 };
 
-const TRIMMED: (RegistrationField | "role")[] = [
-  "firstName", "lastName", "username", "email", "phoneNumber", "department", "tenantId", "role",
+const TRIMMED: string[] = [
+  "firstName", "lastName", "username", "email", "phoneNumber", "department", "tenantId", "company", "role",
 ];
+
+export const isUuid = (v: string) => UUID.test(v);
 
 export function validateRegistration(body: Record<string, unknown>) {
   const values: Record<string, string> = {};
   for (const [k, v] of Object.entries(body ?? {})) {
     if (typeof v === "string") values[k] = TRIMMED.includes(k as RegistrationField) ? v.trim() : v;
   }
-  const fieldErrors: Partial<Record<RegistrationField, string>> = {};
+  const fieldErrors: Partial<Record<RegistrationField | OrganizationField, string>> = {};
+
+  // Organization: an explicit tenantId must be a UUID; otherwise a company
+  // name (or an ID pasted into the company field) is required.
+  if (values.tenantId) {
+    if (!UUID.test(values.tenantId)) {
+      fieldErrors.tenantId = "Organization IDs look like xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx";
+    }
+  } else if (!values.company) {
+    fieldErrors.company = "This field is required";
+  } else if (values.company.length < 2 || values.company.length > 100) {
+    fieldErrors.company = "Use 2–100 characters";
+  }
   for (const field of Object.keys(REGISTRATION_RULES) as RegistrationField[]) {
     const value = values[field] ?? "";
     if (!value) {

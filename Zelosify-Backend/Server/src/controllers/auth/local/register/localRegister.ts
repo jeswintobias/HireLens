@@ -8,7 +8,6 @@ import { authenticator } from "otplib";
 import { createKeycloakUser } from "../../../../utils/keycloak/createKeycloakUser.js";
 import axios from "axios";
 import { AuthProvider, Role } from "@prisma/client";
-import { getClientSecret } from "../../../../config/keycloak/keycloak.js";
 import { isValidRole } from "../../../../utils/RBAC/isValidRole.js";
 import {
   REGISTRATION_KEY_HEADER,
@@ -17,7 +16,6 @@ import {
 
 const KEYCLOAK_URL = process.env.KEYCLOAK_URL || "http://localhost:8080/auth";
 const REALM_NAME = process.env.KEYCLOAK_REALM || "Zelosify";
-const CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID || "dynamic-client";
 
 /**
  * Register a new user with TOTP 2FA setup
@@ -176,39 +174,9 @@ export const register = asyncHandler(
         return;
       }
 
-      // Get initial tokens from Keycloak
-      const tokenResponse = await axios.post(
-        `${KEYCLOAK_URL}/realms/${REALM_NAME}/protocol/openid-connect/token`,
-        new URLSearchParams({
-          grant_type: "password",
-          client_id: CLIENT_ID,
-          client_secret: await getClientSecret(adminToken),
-          username: username,
-          password: password,
-          scope: "openid profile email roles offline_access",
-        }),
-        { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
-      );
-
-      // Set access token cookie
-      res.cookie("access_token", tokenResponse.data.access_token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        maxAge: 3600 * 1000, // 1 hour
-        path: "/",
-      });
-
-      // Set refresh token cookie
-      if (tokenResponse.data.refresh_token) {
-        res.cookie("refresh_token", tokenResponse.data.refresh_token, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "strict",
-          maxAge: 24 * 60 * 60 * 1000, // 24 hours
-          path: "/",
-        });
-      }
+      // No session is issued here: the first sign-in goes through password +
+      // TOTP like every other, which also proves the authenticator was set up.
+      // (Issuing cookies at sign-up skipped 2FA and let users skip enrolment.)
 
       // Generate QR code for TOTP
       const otpAuthUrl = authenticator.keyuri(email, REALM_NAME, totpSecret);

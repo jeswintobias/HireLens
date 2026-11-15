@@ -29,8 +29,14 @@ describe("registration validation", () => {
 
   it("reports every missing field", () => {
     expect(Object.keys(validateRegistration({}).fieldErrors).sort()).toEqual(
-      ["department", "email", "firstName", "lastName", "password", "phoneNumber", "tenantId", "username"]
+      ["company", "department", "email", "firstName", "lastName", "password", "phoneNumber", "username"]
     );
+  });
+
+  it("accepts a company name instead of a tenantId", () => {
+    const { tenantId, ...rest } = valid;
+    expect(validateRegistration({ ...rest, company: "  Bruce Wayne Corp " }).fieldErrors).toEqual({});
+    expect(validateRegistration({ ...rest, company: "B" }).fieldErrors).toHaveProperty("company");
   });
 
   it.each([
