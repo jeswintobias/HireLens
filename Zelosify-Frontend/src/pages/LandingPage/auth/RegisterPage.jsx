@@ -8,6 +8,7 @@ import { AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
 import { Briefcase, Building2, Check, Copy, ShieldCheck, UserCheck } from "lucide-react";
 import SocialButton from "@/components/UI/SocialButton";
 import axiosInstance from "@/utils/Axios/AxiosInstance";
+import { validateAll, validateField } from "@/utils/Auth/registrationRules";
 import Link from "next/link";
 
 /** Google / Microsoft sign-in need OAuth apps configured in Keycloak; hidden until then. */
@@ -29,37 +30,47 @@ const ROLES = [
   },
 ];
 
-const inputClass =
-  "w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent dark:bg-gray-900 dark:text-white transition-colors duration-200";
+const inputBase =
+  "w-full px-3 py-2 border rounded-lg focus:ring-2 focus:border-transparent dark:bg-gray-900 dark:text-white transition-colors duration-200";
+const inputClass = (invalid) =>
+  `${inputBase} ${
+    invalid
+      ? "border-red-500 focus:ring-red-500 dark:border-red-500"
+      : "border-gray-300 dark:border-gray-700 focus:ring-blue-500 dark:focus:ring-blue-400"
+  }`;
 const labelClass = "block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1";
 
-/** The <label> wraps its input, so the two are linked for screen readers and autofill. */
-function Field({ label, hint, children }) {
+/**
+ * The <label> wraps its input, so the two are linked for screen readers and
+ * autofill. Errors are announced via aria-describedby on the input.
+ */
+function Field({ label, hint, name, error, children }) {
   return (
     <div>
       <label className="block">
         <span className={labelClass}>{label}</span>
         {children}
       </label>
-      {hint && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{hint}</p>}
+      {error ? (
+        <p id={`${name}-error`} className="mt-1 text-xs text-red-600 dark:text-red-400">
+          {error}
+        </p>
+      ) : (
+        hint && (
+          <p id={`${name}-hint`} className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {hint}
+          </p>
+        )
+      )}
     </div>
   );
 }
 
-function PasswordInput({ name, value, onChange, autoComplete }) {
+function PasswordInput({ inputProps }) {
   const [show, setShow] = useState(false);
   return (
     <div className="relative">
-      <input
-        name={name}
-        type={show ? "text" : "password"}
-        required
-        minLength={8}
-        value={value}
-        onChange={onChange}
-        autoComplete={autoComplete}
-        className={inputClass}
-      />
+      <input type={show ? "text" : "password"} {...inputProps} />
       <button
         type="button"
         onClick={() => setShow((s) => !s)}
@@ -171,48 +182,87 @@ export default function Register() {
     confirmPassword: "",
   });
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [touched, setTouched] = useState({});
   const [isLoading, setIsLoading] = useState(false);
   const [enrolment, setEnrolment] = useState(null);
 
-  const handleChange = useCallback((e) => {
-    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
-  }, []);
+  const handleChange = useCallback(
+    (e) => {
+      const { name, value } = e.target;
+      const next = { ...formData, [name]: value };
+      setFormData(next);
+      // Re-check fields already visited, so messages clear as soon as they are fixed.
+      const dependent = name === "password" || name === "username" ? ["password", "confirmPassword"] : [];
+      setFieldErrors((errs) => {
+        const updated = { ...errs };
+        for (const f of new Set([name, ...dependent])) {
+          if (!touched[f] && !errs[f]) continue;
+          const msg = validateField(f, next);
+          if (msg) updated[f] = msg;
+          else delete updated[f];
+        }
+        return updated;
+      });
+    },
+    [formData, touched]
+  );
+
+  const handleBlur = useCallback(
+    (e) => {
+      const { name } = e.target;
+      setTouched((t) => ({ ...t, [name]: true }));
+      const msg = validateField(name, formData);
+      setFieldErrors((errs) => {
+        const updated = { ...errs };
+        if (msg) updated[name] = msg;
+        else delete updated[name];
+        return updated;
+      });
+    },
+    [formData]
+  );
+
+  const focusField = (name) => document.querySelector(`[name="${name}"]`)?.focus();
 
   const handleSubmit = useCallback(
     async (e) => {
       e.preventDefault();
       setError("");
-      if (formData.password !== formData.confirmPassword) {
-        setError("Passwords do not match");
-        return;
-      }
-      if (formData.password.length < 8) {
-        setError("Password must be at least 8 characters long");
+      const errors = validateAll(formData);
+      if (Object.keys(errors).length > 0) {
+        setFieldErrors(errors);
+        setTouched(Object.fromEntries(Object.keys(formData).map((k) => [k, true])));
+        setError("Please fix the highlighted fields.");
+        focusField(Object.keys(errors)[0]);
         return;
       }
 
       setIsLoading(true);
       try {
         const { confirmPassword, ...payload } = formData;
-        const res = await axiosInstance.post("/auth/register", {
-          ...payload,
-          tenantId: payload.tenantId.trim(),
-          username: payload.username.trim(),
-          email: payload.email.trim(),
-        });
+        const trimmed = Object.fromEntries(
+          Object.entries(payload).map(([k, v]) => [k, k === "password" ? v : v.trim()])
+        );
+        const res = await axiosInstance.post("/auth/register", trimmed);
         setEnrolment({
           qrCode: res.data.qrCode,
           otpAuthUrl: res.data.otpAuthUrl,
-          username: res.data.user?.username ?? payload.username,
+          username: res.data.user?.username ?? trimmed.username,
         });
       } catch (err) {
         const { status, data } = err.response ?? {};
         if (!err.response) setError("Cannot reach the server. Is the backend running?");
-        else if (status === 400 && data?.message === "User already exists.")
+        else if (data?.fieldErrors) {
+          setFieldErrors(data.fieldErrors);
+          setError(data.message || "Please fix the highlighted fields.");
+          focusField(Object.keys(data.fieldErrors)[0]);
+        } else if (status === 400 && data?.message === "User already exists.")
           setError("That username or email is already registered. Try signing in.");
-        else if (status === 400 && data?.message === "Invalid tenant ID.")
-          setError("Organization ID not found. Check the ID your administrator gave you.");
-        else if (status === 429) setError(data?.message || "Too many attempts. Please wait and try again.");
+        else if (status === 400 && data?.message === "Invalid tenant ID.") {
+          setFieldErrors((errs) => ({ ...errs, tenantId: "Organization ID not found. Check the ID your administrator gave you." }));
+          focusField("tenantId");
+        } else if (status === 429) setError(data?.message || "Too many attempts. Please wait and try again.");
         else setError(data?.message || data?.error || "Registration failed. Please try again.");
       } finally {
         setIsLoading(false);
@@ -220,6 +270,17 @@ export default function Register() {
     },
     [formData]
   );
+
+  /** Props shared by every text input: value, handlers, error styling and ARIA. */
+  const fieldProps = (name, extra = {}) => ({
+    name,
+    value: formData[name],
+    onChange: handleChange,
+    onBlur: handleBlur,
+    "aria-invalid": fieldErrors[name] ? true : undefined,
+    "aria-describedby": fieldErrors[name] ? `${name}-error` : extra.hint ? `${name}-hint` : undefined,
+    className: `${inputClass(!!fieldErrors[name])} ${extra.className ?? ""}`,
+  });
 
   const startSso = useCallback(async (provider) => {
     try {
@@ -262,7 +323,7 @@ export default function Register() {
       {enrolment ? (
         <TwoFactorSetup {...enrolment} />
       ) : (
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} noValidate className="space-y-4">
           <fieldset>
             <legend className={labelClass}>I am a</legend>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -297,46 +358,49 @@ export default function Register() {
 
           <Field
             label="Organization ID"
+            name="tenantId"
+            error={fieldErrors.tenantId}
             hint="Your administrator shares this ID. For the demo data it is printed by npm run seed:openings."
           >
             <div className="relative">
               <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <input
-                name="tenantId"
-                required
-                value={formData.tenantId}
-                onChange={handleChange}
+                {...fieldProps("tenantId", { hint: true, className: "pl-9" })}
                 placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                className={`${inputClass} pl-9`}
                 autoComplete="off"
               />
             </div>
           </Field>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="First name">
-              <input name="firstName" required value={formData.firstName} onChange={handleChange} className={inputClass} autoComplete="given-name" />
+            <Field label="First name" name="firstName" error={fieldErrors.firstName}>
+              <input {...fieldProps("firstName")} autoComplete="given-name" />
             </Field>
-            <Field label="Last name">
-              <input name="lastName" required value={formData.lastName} onChange={handleChange} className={inputClass} autoComplete="family-name" />
+            <Field label="Last name" name="lastName" error={fieldErrors.lastName}>
+              <input {...fieldProps("lastName")} autoComplete="family-name" />
             </Field>
-            <Field label="Username">
-              <input name="username" required value={formData.username} onChange={handleChange} className={inputClass} autoComplete="username" />
+            <Field label="Username" name="username" error={fieldErrors.username}>
+              <input {...fieldProps("username")} autoComplete="username" />
             </Field>
-            <Field label="Email">
-              <input name="email" type="email" required value={formData.email} onChange={handleChange} className={inputClass} autoComplete="email" />
+            <Field label="Email" name="email" error={fieldErrors.email}>
+              <input {...fieldProps("email")} type="email" autoComplete="email" />
             </Field>
-            <Field label="Phone number">
-              <input name="phoneNumber" type="tel" required value={formData.phoneNumber} onChange={handleChange} className={inputClass} autoComplete="tel" />
+            <Field label="Phone number" name="phoneNumber" error={fieldErrors.phoneNumber}>
+              <input {...fieldProps("phoneNumber")} type="tel" autoComplete="tel" placeholder="+91 98765 43210" />
             </Field>
-            <Field label="Department">
-              <input name="department" required value={formData.department} onChange={handleChange} className={inputClass} placeholder="e.g. Engineering" />
+            <Field label="Department" name="department" error={fieldErrors.department}>
+              <input {...fieldProps("department")} placeholder="e.g. Engineering" />
             </Field>
-            <Field label="Password">
-              <PasswordInput name="password" value={formData.password} onChange={handleChange} autoComplete="new-password" />
+            <Field
+              label="Password"
+              name="password"
+              error={fieldErrors.password}
+              hint="8+ characters with a letter and a number"
+            >
+              <PasswordInput inputProps={{ ...fieldProps("password", { hint: true }), autoComplete: "new-password" }} />
             </Field>
-            <Field label="Confirm password">
-              <PasswordInput name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} autoComplete="new-password" />
+            <Field label="Confirm password" name="confirmPassword" error={fieldErrors.confirmPassword}>
+              <PasswordInput inputProps={{ ...fieldProps("confirmPassword"), autoComplete: "new-password" }} />
             </Field>
           </div>
 

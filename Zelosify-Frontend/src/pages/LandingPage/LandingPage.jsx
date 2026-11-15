@@ -54,7 +54,7 @@ const FEATURES = [
   },
 ];
 
-/** Small static preview of a hiring-manager profile card. */
+/** Static, clearly labelled example of a hiring-manager profile card (no real data). */
 function PreviewCard() {
   const bars = [
     ["Skills", 100],
@@ -63,6 +63,9 @@ function PreviewCard() {
   ];
   return (
     <div className="relative mx-auto w-full max-w-md">
+      <p className="relative mb-3 text-center text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+        Example recommendation
+      </p>
       <div
         className="absolute -inset-4 rounded-3xl bg-gradient-to-br from-blue-600/20 to-purple-600/20 blur-2xl"
         aria-hidden="true"
@@ -72,8 +75,8 @@ function PreviewCard() {
         <div className="space-y-4 p-5 pl-6">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">priya_nair_fullstack.pdf</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Uploaded today · by Acme Staffing</p>
+              <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">candidate_resume.pdf</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Full Stack Engineer · Hyderabad</p>
             </div>
             <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
               <Sparkles className="h-3 w-3" aria-hidden="true" /> Recommended
